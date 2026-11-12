@@ -1,4 +1,5 @@
 """Run: uvicorn server:app --reload   (then open http://localhost:8000)."""
+import os
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +25,17 @@ class FixIn(BaseModel):
     cap: int = Field(6000, ge=100, le=1_000_000)
 
 @app.get("/api/status")
-def status(): return {"bifrost": live_llm(), "tavily": live_web()}
+def status():
+    bifrost, tavily = live_llm(), live_web()
+    return {
+        "bifrost": bifrost,
+        "tavily": tavily,
+        "mode": "live" if bifrost or tavily else "offline",
+        "models": {
+            "cheap": os.getenv("LEDGER_CHEAP", "openai/gpt-4o-mini"),
+            "strong": os.getenv("LEDGER_STRONG", "anthropic/claude-sonnet-4-5"),
+        },
+    }
 @app.post("/api/brief")
 def brief(b: BriefIn): return run_brief(b.company, b.meeting, b.cap)
 @app.post("/api/fix")

@@ -10,6 +10,7 @@ tok = lambda s: max(1, len(s) // 4)
 
 class BudgetExhausted(Exception): pass
 class GatewayError(RuntimeError): pass
+class WebSearchError(RuntimeError): pass
 
 @dataclass
 class Meter:
@@ -61,12 +62,25 @@ def in_window(d, today, window=30):
     except Exception: return False
 
 def tavily_news(query, today, window=30):
-    r = httpx.post("https://api.tavily.com/search", timeout=30,
-                   headers={"Authorization": "Bearer " + os.environ["TAVILY_API_KEY"]},
-                   json={"query": query, "topic": "news", "max_results": 5,
-                         "start_date": (today - timedelta(window)).isoformat(), "end_date": today.isoformat()}).json()
-    return [{"url": x["url"], "title": x["title"], "date": to_iso(x.get("published_date")), "text": x.get("content", "")}
-            for x in r.get("results", [])]
+    try:
+        response = httpx.post(
+            "https://api.tavily.com/search",
+            timeout=30,
+            headers={"Authorization": "Bearer " + os.environ["TAVILY_API_KEY"]},
+            json={"query": query, "topic": "news", "max_results": 5,
+                  "start_date": (today - timedelta(window)).isoformat(), "end_date": today.isoformat()},
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not isinstance(results, list):
+            raise ValueError("results must be a list")
+        return [
+            {"url": x["url"], "title": x["title"], "date": to_iso(x.get("published_date")),
+             "text": x.get("content", "")}
+            for x in results
+        ]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        raise WebSearchError(f"Tavily request failed: {exc}") from exc
 
 norm = lambda s: re.sub(r"\s+", " ", s.lower().replace(",", "")).strip()
 
