@@ -1,6 +1,7 @@
 import httpx
 from datetime import date, timedelta
 from kernel import GatewayError, Meter, BudgetExhausted, verify
+from server import BriefIn, FixIn
 from modes import run_brief, run_fix
 
 T = date.today()
@@ -45,6 +46,18 @@ def test_gateway_errors_are_explicit(monkeypatch):
         assert False
     except GatewayError:
         pass
+
+def test_api_inputs_are_trimmed_and_bounded():
+    request = BriefIn(company="  Acme  ", meeting="  Thu 3pm  ", cap=500)
+    assert request.company == "Acme"
+    assert request.meeting == "Thu 3pm"
+    assert FixIn(cap=100).cap == 100
+    for model, kwargs in ((BriefIn, {"company": " ", "meeting": "Thu 3pm"}), (FixIn, {"cap": 99})):
+        try:
+            model(**kwargs)
+            assert False
+        except ValueError:
+            pass
 
 def test_brief_gate():
     r = run_brief("Acme Robotics", "Thu 3pm")
