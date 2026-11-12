@@ -23,13 +23,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
 .bar{height:14px;background:var(--rule);margin:2px 0}.bar i{display:block;height:100%;background:var(--ink)}.bar.b i{background:var(--no)}
 pre{margin:0;font:13px/22px ui-monospace,monospace;background:#0000000a;padding:0 8px}.empty{color:var(--mute)}
 </style></head><body>
-<header><h1>Ledger</h1><span class="tag">Gate before you spend</span><span class="badge" id="st">checking…</span></header>
+<header><h1>Ledger</h1><span class="tag">Cheaper agents. Stronger evidence.</span><span class="badge" id="st">checking…</span></header>
 <main><aside>
 <div class="tabs" role="tablist"><button id="tb" class="on">Brief</button><button id="tf">Fix</button></div>
 <div id="fb"><label for="co">Company or person</label><input id="co" value="Acme Robotics"><label for="mt" style="margin-top:8px">Meeting time</label><input id="mt" value="Thu 3pm"></div>
 <div><label for="cap">Token budget</label><input id="cap" type="number" value="12000" step="1000"></div>
 <button class="run" id="go">Build brief</button>
-<p class="tag" id="hint">Offline replay uses bundled sources and a stub model. Set TAVILY_API_KEY and BIFROST_URL for live runs.</p>
+<p class="tag" id="hint">Ledger checks cheaply before spending: verified claims in Brief, focused test-driven edits in Fix. Offline replay uses bundled sources and a stub model.</p>
 </aside><section class="sheet" id="out"><p class="empty">Run a brief to see sourced claims, rejected claims and the token receipt.</p></section></main>
 <script>
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
