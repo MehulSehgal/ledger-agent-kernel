@@ -1,6 +1,6 @@
 import httpx
 from datetime import date, timedelta
-from kernel import GatewayError, Meter, BudgetExhausted, verify
+from kernel import GatewayError, Meter, BudgetExhausted, WebSearchError, tavily_news, verify
 from server import BriefIn, FixIn
 from modes import run_brief, run_fix
 
@@ -46,6 +46,19 @@ def test_gateway_errors_are_explicit(monkeypatch):
         assert False
     except GatewayError:
         pass
+
+def test_web_search_errors_are_explicit(monkeypatch):
+    class FailedResponse:
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError("unexpected", request=httpx.Request("POST", "http://tavily"), response=httpx.Response(503))
+
+    monkeypatch.setattr("kernel.httpx.post", lambda *args, **kwargs: FailedResponse())
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    try:
+        tavily_news("Acme", T)
+        assert False
+    except WebSearchError as exc:
+        assert "Tavily request failed" in str(exc)
 
 def test_api_inputs_are_trimmed_and_bounded():
     request = BriefIn(company="  Acme  ", meeting="  Thu 3pm  ", cap=500)
