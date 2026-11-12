@@ -13,7 +13,7 @@ aside{display:flex;flex-direction:column;gap:12px}
 .tabs{display:flex;border:1px solid var(--ink);border-radius:6px;overflow:hidden}
 .tabs button{flex:1;padding:8px;border:0;background:none;font:inherit;cursor:pointer}.tabs .on{background:var(--ink);color:#fff}
 label{font-size:13px;color:var(--mute);display:block}input{width:100%;padding:8px;border:1px solid var(--rule);border-radius:4px;font:inherit;background:var(--paper)}
-.run{padding:10px;background:var(--blue);color:#fff;border:0;border-radius:6px;font:600 15px inherit;cursor:pointer}
+.run{padding:10px;background:var(--blue);color:#fff;border:0;border-radius:6px;font:600 15px inherit;cursor:pointer}.run:disabled{opacity:.6;cursor:wait}
 button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 .sheet{background:var(--paper) repeating-linear-gradient(transparent 0 27px,var(--rule) 27px 28px);border:1px solid var(--rule);border-left:3px solid var(--no);padding:24px 28px;min-height:420px;line-height:28px}
 .sheet h2{font:600 24px/32px "Newsreader",Georgia,serif;margin:0 0 4px}.sheet h3{font:600 16px/28px "Public Sans";margin:28px 0 0}
@@ -49,7 +49,8 @@ ${bars(r)}<p>Cost per verified claim: <b>$${r.cost_per_verified}</b></p>`}
 function fix(r){return `<h2>Fix mode</h2><p><span class="stamp ${r.status=="green"?"pass":"fail"}">${r.status}</span></p>
 <table>${r.steps.map(s=>`<tr><td><span class="${s.ok?"pass":"fail"}">${s.ok?"✓":"✗"}</span> ${esc(s.step)}</td><td style="text-align:left">${esc(s.detail)}</td></tr>`).join("")}</table>
 ${(r.diff||[]).map(d=>`<h3>Edit</h3><pre class="fail">- ${esc(d.old.trim())}</pre><pre class="pass">+ ${esc(d.new.trim())}</pre>`).join("")}${r.baseline_tokens?bars(r):""}`}
-$("go").onclick=async()=>{$("out").innerHTML='<p class="empty">Running…</p>';
- try{const r=await (await fetch("/api/"+mode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({company:$("co").value,meeting:$("mt").value,cap:+$("cap").value})})).json();
- $("out").innerHTML=mode=="brief"?brief(r):fix(r)}catch(e){$("out").innerHTML='<p class="fail">Backend error. Start it with: uvicorn server:app</p>'}};
+$("go").onclick=async()=>{$("out").innerHTML='<p class="empty">Running…</p>';$("go").disabled=true;
+ try{const response=await fetch("/api/"+mode,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({company:$("co").value,meeting:$("mt").value,cap:+$("cap").value})});
+ const r=await response.json();if(!response.ok){const detail=Array.isArray(r.detail)?r.detail.map(x=>x.msg).join("; "):r.detail||"Request failed";throw new Error(detail)}
+ $("out").innerHTML=mode=="brief"?brief(r):fix(r)}catch(e){$("out").innerHTML=`<p class="fail">Request failed: ${esc(e.message)}</p>`}finally{$("go").disabled=false}};
 </script></body></html>
