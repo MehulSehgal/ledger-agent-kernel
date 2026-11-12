@@ -9,11 +9,15 @@ PRICE = {"cheap": (0.15, 0.60), "strong": (3.00, 15.00)}  # $/Mtok, PLACEHOLDERS
 tok = lambda s: max(1, len(s) // 4)
 
 class BudgetExhausted(Exception): pass
+class GatewayError(RuntimeError): pass
 
 @dataclass
 class Meter:
     cap: int = 12000
     calls: list = field(default_factory=list)
+    def __post_init__(self):
+        if self.cap <= 0:
+            raise ValueError("token budget must be positive")
     def used(self): return sum(c["in"] + c["out"] for c in self.calls)
     def pick(self, want):
         u = self.used()
@@ -32,9 +36,18 @@ def chat(meter, label, want, system, user):
     """One call through the Bifrost gateway (OpenAI-compatible). Models are provider/model strings."""
     tier = meter.pick(want)
     model = os.getenv(f"LEDGER_{tier.upper()}", "openai/gpt-4o-mini" if tier == "cheap" else "anthropic/claude-sonnet-4-5")
-    r = httpx.post(os.environ["BIFROST_URL"].rstrip("/") + "/v1/chat/completions", timeout=90,
-                   json={"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).json()
-    out, u = r["choices"][0]["message"]["content"], r.get("usage", {})
+    try:
+        response = httpx.post(
+            os.environ["BIFROST_URL"].rstrip("/") + "/v1/chat/completions",
+            timeout=90,
+            json={"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+        )
+        response.raise_for_status()
+        r = response.json()
+        out = r["choices"][0]["message"]["content"]
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+        raise GatewayError(f"Bifrost request failed: {exc}") from exc
+    u = r.get("usage", {})
     meter.log(label, tier, u.get("prompt_tokens", tok(system + user)), u.get("completion_tokens", tok(out)))
     return out
 
