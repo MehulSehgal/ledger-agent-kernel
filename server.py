@@ -2,13 +2,26 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from kernel import live_llm, live_web
 from modes import run_brief, run_fix
 
 app = FastAPI(title="Ledger")
-class BriefIn(BaseModel): company: str = "Acme Robotics"; meeting: str = "Thu 3pm"; cap: int = 12000
-class FixIn(BaseModel): cap: int = 6000
+class BriefIn(BaseModel):
+    company: str = Field("Acme Robotics", min_length=1, max_length=200)
+    meeting: str = Field("Thu 3pm", min_length=1, max_length=200)
+    cap: int = Field(12000, ge=100, le=1_000_000)
+
+    @field_validator("company", "meeting")
+    @classmethod
+    def trim_text(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+class FixIn(BaseModel):
+    cap: int = Field(6000, ge=100, le=1_000_000)
 
 @app.get("/api/status")
 def status(): return {"bifrost": live_llm(), "tavily": live_web()}
