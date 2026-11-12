@@ -1,7 +1,6 @@
-import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+import httpx
 from datetime import date, timedelta
-from kernel import Meter, BudgetExhausted, verify
+from kernel import GatewayError, Meter, BudgetExhausted, verify
 from modes import run_brief, run_fix
 
 T = date.today()
@@ -22,6 +21,30 @@ def test_budget_degrade_and_cap():
     m.log("b", "cheap", 30, 0)
     try: m.pick("cheap"); assert False
     except BudgetExhausted: pass
+
+def test_meter_rejects_non_positive_budget():
+    try:
+        Meter(0)
+        assert False
+    except ValueError as exc:
+        assert str(exc) == "token budget must be positive"
+
+def test_gateway_errors_are_explicit(monkeypatch):
+    class FailedResponse:
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError("unexpected", request=httpx.Request("POST", "http://gateway"), response=httpx.Response(502))
+
+    def request(*args, **kwargs):
+        return FailedResponse()
+
+    monkeypatch.setattr("kernel.httpx.post", request)
+    monkeypatch.setenv("BIFROST_URL", "http://gateway")
+    try:
+        from kernel import chat
+        chat(Meter(), "test", "cheap", "system", "user")
+        assert False
+    except GatewayError:
+        pass
 
 def test_brief_gate():
     r = run_brief("Acme Robotics", "Thu 3pm")
