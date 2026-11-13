@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ledger</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Public+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="/styles.css"></head><body>
+<header><h1>Ledger</h1><span class="tag">Cheaper agents. Stronger evidence.</span><span class="badge" id="st">checking…</span></header>
+<main><aside>
+<div class="tabs" role="tablist"><button id="tb" class="on">Brief</button><button id="tf">Fix</button></div>
+<div id="fb"><label for="co">Company or person</label><input id="co" value="Acme Robotics"><label for="mt" style="margin-top:8px">Meeting time</label><input id="mt" value="Thu 3pm"></div>
+<div><label for="cap">Token budget</label><input id="cap" type="number" value="12000" step="1000"></div>
+<button class="run" id="go">Build brief</button>
+<p class="tag" id="hint">Ledger checks cheaply before spending: verified claims in Brief, focused test-driven edits in Fix. Offline replay uses bundled sources and a stub model.</p>
+</aside><section class="sheet" id="out"><p class="empty">Run a brief to see sourced claims, rejected claims and the token receipt.</p></section></main>
+<script src="/app.js"></script></body></html>
