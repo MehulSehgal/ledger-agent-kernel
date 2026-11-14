@@ -21,8 +21,8 @@ The policy engine, rather than model output or repository content, decides wheth
 | Red-team runner and interface | Done | Scenarios execute through the local application paths and report their evidence. |
 | Benchmark runner and summarizer | Done | Produces run records and a summary when invoked. |
 | Bifrost and Tavily live connectivity | Not verified live | Requires configured endpoints and credentials; live service behavior has not been validated here. |
-| Recorded benchmark results | Not done | No benchmark summary is present in `bench/results/summary.json`. |
-| Green full test suite | Not done | Existing tests include Fix requests using a previous API contract. |
+| Recorded benchmark results | Done locally | Offline Ledger and baseline arms each passed 3/3 toy trials; see `bench/results/summary.json`. |
+| Green full test suite | Done locally | `python -m pytest -q` passes 121 tests; live provider behavior remains unverified. |
 | GitHub Actions workflow | Done | Configured to run the test suite on pushes; remote execution has not been observed. |
 
 No live integration is marked verified live. The status above distinguishes implemented paths from externally validated service behavior.
