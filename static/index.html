@@ -29,6 +29,43 @@
         aria-selected="false" aria-controls="benchmark-screen" tabindex="-1">Benchmark</button>
     </nav>
     <section id="run-screen" role="tabpanel" aria-labelledby="run-screen-tab">
+    <section class="hero-banner" aria-labelledby="hero-heading">
+      <div class="hero-copy">
+        <p class="eyebrow">Evidence command center</p>
+        <h1 id="hero-heading">Turn uncertainty into an auditable decision.</h1>
+        <p class="hero-description">Ledger orchestrates research and repository fixes with proof attached to every important step.</p>
+        <div class="hero-trust">
+          <span><i class="trust-dot trust-dot-blue"></i>Evidence-first</span>
+          <span><i class="trust-dot trust-dot-green"></i>Policy-gated</span>
+          <span><i class="trust-dot trust-dot-violet"></i>Local-first</span>
+        </div>
+      </div>
+      <div class="hero-demo">
+        <p class="eyebrow">Jump-start a demo</p>
+        <p class="hero-demo-copy">Choose a scenario and see the receipt update in real time.</p>
+        <div class="preset-list" role="list" aria-label="Demo presets">
+          <button class="preset-button" type="button" data-preset="board">
+            <span class="preset-icon">↗</span>
+            <span><strong>Board prep</strong><small>Company signal brief</small></span>
+          </button>
+          <button class="preset-button" type="button" data-preset="market">
+            <span class="preset-icon">◎</span>
+            <span><strong>Market scan</strong><small>Fresh evidence window</small></span>
+          </button>
+          <button class="preset-button" type="button" data-preset="confidential">
+            <span class="preset-icon">⌁</span>
+            <span><strong>Private review</strong><small>Local-only routing</small></span>
+          </button>
+        </div>
+      </div>
+    </section>
+    <section class="signal-strip" aria-label="Run outcomes">
+      <div class="signal-card"><span class="signal-icon signal-icon-blue">✓</span><div><strong id="stat-verified">0</strong><span>verified claims</span></div></div>
+      <div class="signal-card"><span class="signal-icon signal-icon-green">◉</span><div><strong id="stat-sources">0</strong><span>sources checked</span></div></div>
+      <div class="signal-card"><span class="signal-icon signal-icon-violet">◌</span><div><strong id="stat-tokens">0</strong><span>tokens metered</span></div></div>
+      <div class="signal-card"><span class="signal-icon signal-icon-amber">!</span><div><strong id="stat-rejected">0</strong><span>claims rejected</span></div></div>
+      <div class="signal-context"><span class="live-pulse"></span><span id="signal-context-text">Ready for your first run</span></div>
+    </section>
     <div class="workspace">
     <aside class="control-panel panel" aria-label="Run controls">
       <div class="panel-heading">
