@@ -473,6 +473,7 @@ def _parse_patches(reply):
 
 
 def _apply_patches(sandbox, original, patches, candidate_paths=None):
+    sandbox = Path(os.path.realpath(sandbox))
     if not patches:
         return False, "model output did not contain SEARCH/REPLACE blocks"
     allowed = set(candidate_paths) if candidate_paths is not None else {
