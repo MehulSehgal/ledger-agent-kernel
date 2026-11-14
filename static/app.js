@@ -99,9 +99,27 @@ function resetRunView() {
   byId("live-usd").textContent = "—";
   byId("savings-row").hidden = true;
   byId("savings-row").classList.remove("savings-negative");
+  updateOutcomeStats();
   updateMeter(0, Number(byId("token-budget").value) || budgetCap);
   closeSidePanel();
   closeApprovalDrawer();
+}
+
+function updateOutcomeStats(result = null) {
+  const audit = result?.audit || {};
+  const receipt = result?.receipt || {};
+  const verified = Number(audit.accepted) || 0;
+  const sources = Array.isArray(result?.sources) ? result.sources.length : 0;
+  const rejected = Array.isArray(audit.rejected_claims)
+    ? audit.rejected_claims.length
+    : Array.isArray(audit.rejected_bullets) ? audit.rejected_bullets.length : 0;
+  byId("stat-verified").textContent = formatNumber(verified);
+  byId("stat-sources").textContent = formatNumber(sources);
+  byId("stat-tokens").textContent = formatNumber(receipt.tokens || totalUsed);
+  byId("stat-rejected").textContent = formatNumber(rejected);
+  byId("signal-context-text").textContent = result
+    ? `${verified} verified claims · ${sources} sources · receipt sealed`
+    : "Ready for your first run";
 }
 
 function formatNumber(value) {
