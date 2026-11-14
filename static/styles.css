@@ -751,11 +751,21 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
 }
 
 @media (max-width: 1100px) {
+  .hero-banner { margin-left: 18px; margin-right: 18px; }
+  .signal-context { display: none; }
   .workspace { grid-template-columns: minmax(220px, 270px) minmax(330px, 1fr); }
   .meter-panel { position: static; grid-column: 1 / -1; }
   .meter-panel .receipt-calls ol { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 }
 @media (max-width: 720px) {
+  .hero-banner { grid-template-columns: 1fr; gap: 18px; margin: 14px 12px 0; padding: 22px 20px; }
+  .hero-copy h1 { font-size: 34px; }
+  .hero-description { font-size: 13px; }
+  .hero-demo { padding: 16px 0 0; border-top: 1px solid #b5c6e8; border-left: 0; }
+  .signal-strip { padding: 0 12px; overflow-x: auto; }
+  .signal-card { min-width: 132px; padding: 10px 11px; }
+  .signal-card:first-child { border-radius: 8px 0 0 8px; }
+  .signal-card:nth-last-child(2) { border-radius: 0 8px 8px 0; }
   .topbar { flex-wrap: wrap; gap: 8px 12px; padding: 12px 15px; }
   .tagline { flex: 1; }
   .header-status { width: 100%; margin-left: 0; }
