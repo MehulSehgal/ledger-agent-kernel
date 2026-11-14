@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Ledger — Run console</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Public+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Ledger home">Ledger</a>
+    <p class="tagline">Cheaper agents. Stronger evidence.</p>
+    <div class="header-status">
+      <span class="blocked-count" id="blocked-count" hidden>0 blocked</span>
+      <span class="state-badge state-idle" id="run-state" role="status">Idle</span>
+      <span class="service-badge" id="service-status">Checking services…</span>
+    </div>
+  </header>
+
+  <main>
+    <nav class="screen-tabs" role="tablist" aria-label="Workspace">
+      <button id="run-screen-tab" class="screen-tab is-active" type="button" role="tab"
+        aria-selected="true" aria-controls="run-screen" tabindex="0">Run</button>
+      <button id="redteam-tab" class="screen-tab" type="button" role="tab"
+        aria-selected="false" aria-controls="redteam-screen" tabindex="-1">Red-team</button>
+      <button id="benchmark-tab" class="screen-tab" type="button" role="tab"
+        aria-selected="false" aria-controls="benchmark-screen" tabindex="-1">Benchmark</button>
+    </nav>
+    <section id="run-screen" role="tabpanel" aria-labelledby="run-screen-tab">
+    <div class="workspace">
+    <aside class="control-panel panel" aria-label="Run controls">
+      <div class="panel-heading">
+        <p class="eyebrow">New run</p>
+        <h1>Set the scope</h1>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Run mode">
+        <button id="brief-tab" class="tab is-active" type="button" role="tab"
+          aria-selected="true" aria-controls="brief-fields" tabindex="0">Brief</button>
+        <button id="fix-tab" class="tab" type="button" role="tab"
+          aria-selected="false" aria-controls="fix-fields" tabindex="-1">Fix</button>
+      </div>
+
+      <form id="run-form">
+        <section id="brief-fields" class="mode-fields" role="tabpanel"
+          aria-labelledby="brief-tab">
+          <label for="company">Company or person</label>
+          <input id="company" name="company" value="Acme Robotics" maxlength="200" required>
+          <label for="meeting">Meeting date and time</label>
+          <input id="meeting" name="meeting" type="datetime-local" required>
+        </section>
+        <section id="fix-fields" class="mode-fields" role="tabpanel"
+          aria-labelledby="fix-tab" hidden>
+          <label for="repo-path">Repository path</label>
+          <input id="repo-path" name="repo_path" type="text" placeholder="C:\work\my-project" autocomplete="off">
+          <label for="task">Task <span class="optional">(optional)</span></label>
+          <textarea id="task" name="task" rows="4" maxlength="4000"
+            placeholder="Describe the failing behavior to fix"></textarea>
+          <p class="help">Tests run in a sandbox. Applying a passing diff requires approval.</p>
+        </section>
+
+        <div class="field-group">
+          <label for="user-id">User ID</label>
+          <input id="user-id" name="user_id" value="default" maxlength="128" autocomplete="username">
+        </div>
+        <div class="field-group">
+          <label for="token-budget">Token budget</label>
+          <div class="budget-input">
+            <input id="token-budget" name="cap" type="number" min="100" max="1000000"
+              step="100" value="12000" required>
+            <span>tokens</span>
+          </div>
+        </div>
+        <label class="switch-row" for="confidential">
+          <span>
+            <strong>Confidential repository</strong>
+            <small>Use local models only; disable web lookup.</small>
+          </span>
+          <input id="confidential" name="confidential" type="checkbox">
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+        <div class="form-actions">
+          <button class="primary-button" id="start-run" type="submit">Start brief</button>
+          <button class="secondary-button" id="cancel-run" type="button" disabled>Cancel run</button>
+        </div>
+      </form>
+      <p class="control-note">Approvals are bound to an exact action hash. Repository and model text cannot approve actions.</p>
+    </aside>
+
+    <section class="timeline-panel panel" aria-labelledby="timeline-heading">
+      <div class="panel-heading timeline-heading">
+        <div>
+          <p class="eyebrow">Run activity</p>
+          <h2 id="timeline-heading">Timeline</h2>
+        </div>
+        <div class="timeline-tools">
+          <span class="run-id" id="run-id"></span>
+          <div class="brief-actions" id="brief-actions" hidden>
+            <button class="toolbar-button" id="copy-markdown" type="button">Copy as Markdown</button>
+            <button class="toolbar-button" id="print-brief" type="button">Print / Save PDF</button>
+            <button class="toolbar-button" id="show-rejected" type="button">
+              Rejected claims <span id="rejected-count">0</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="failover-banner" id="failover-banner" role="status" hidden></div>
+      <ol class="timeline" id="timeline" role="log" aria-live="polite"
+        aria-relevant="additions text" aria-label="Live run timeline">
+        <li class="timeline-empty" id="timeline-empty">
+          <span class="empty-mark" aria-hidden="true">—</span>
+          <span>Start a run to follow its steps, model calls, and claims.</span>
+        </li>
+      </ol>
+      <section class="brief-result" id="brief-result" aria-labelledby="brief-result-heading" hidden>
+        <h3 id="brief-result-heading"></h3>
+        <ul class="brief-bullets" id="brief-bullets"></ul>
+        <p class="brief-empty" id="brief-empty" hidden>
+          No claim passed verification, so the strong model was never called.
+        </p>
+        <section class="open-questions" id="open-questions" hidden>
+          <h4>Open questions</h4>
+          <ul id="open-question-list"></ul>
+        </section>
+        <section class="brief-source-list" id="brief-source-section" hidden>
+          <h4>Sources</h4>
+          <ol id="brief-sources"></ol>
+        </section>
+        <p class="copy-feedback" id="copy-feedback" role="status" aria-live="polite"></p>
+      </section>
+      <section class="blocked-panel" id="blocked-panel" aria-labelledby="blocked-heading" hidden>
+        <div class="blocked-heading">
+          <h3 id="blocked-heading">Blocked actions</h3>
+          <span class="blocked-count-inline" id="blocked-inline-count">0</span>
+        </div>
+        <ul id="blocked-list"></ul>
+      </section>
+    </section>
+
+    <aside class="meter-panel panel" aria-labelledby="meter-heading">
+      <div class="panel-heading">
+        <p class="eyebrow">Live receipt</p>
+        <h2 id="meter-heading">Meter</h2>
+      </div>
+      <div class="meter-total">
+        <strong id="token-total">0</strong>
+        <span>tokens used</span>
+      </div>
+      <div class="meter-track" id="meter-track" role="meter" aria-label="Token budget used"
+        aria-valuemin="0" aria-valuemax="12000" aria-valuenow="0">
+        <span class="meter-fill" id="meter-fill"></span>
+        <span class="meter-marker marker-80" aria-hidden="true"><i></i><b>80%</b></span>
+        <span class="meter-marker marker-100" aria-hidden="true"><i></i><b>100%</b></span>
+      </div>
+      <div class="meter-labels">
+        <span><span id="budget-used">0</span> used</span>
+        <span><span id="budget-cap">12,000</span> cap</span>
+      </div>
+      <p class="meter-guidance">80%: strong calls may degrade. 100%: calls stop.</p>
+      <div class="receipt-stat">
+        <span>Live cost</span>
+        <strong id="live-usd">—</strong>
+      </div>
+      <p class="price-warning" id="price-warning" role="status" hidden>Prices unverified</p>
+      <div class="receipt-stat savings-row" id="savings-row" hidden>
+        <span>Savings vs measured baseline</span>
+        <strong id="savings-value"></strong>
+      </div>
+      <div class="receipt-calls">
+        <h3>Model calls</h3>
+        <ol id="call-list"><li class="muted">No calls yet</li></ol>
+      </div>
+    </aside>
+    </div>
+    </section>
+    <section id="redteam-screen" class="tool-screen" role="tabpanel"
+      aria-labelledby="redteam-tab" hidden>
+      <div class="tool-heading">
+        <div>
+          <p class="eyebrow">Safety checks</p>
+          <h1>Red-team scenarios</h1>
+          <p>Run repository, replay, traversal, and confidential-routing checks locally.</p>
+        </div>
+        <button class="primary-button" id="run-redteam" type="button">Run scenarios</button>
+      </div>
+      <p class="tool-status" id="redteam-status" role="status" aria-live="polite">
+        Scenarios have not been run.
+      </p>
+      <ol class="scenario-list" id="redteam-results" aria-live="polite"></ol>
+    </section>
+    <section id="benchmark-screen" class="tool-screen" role="tabpanel"
+      aria-labelledby="benchmark-tab" hidden>
+      <div class="tool-heading">
+        <div>
+          <p class="eyebrow">Measured results</p>
+          <h1>Benchmark</h1>
+          <p>Compare verified outcomes and pass rates across every recorded arm.</p>
+        </div>
+        <button class="secondary-button" id="refresh-benchmark" type="button">Refresh</button>
+      </div>
+      <p class="tool-empty" id="benchmark-empty" role="status" hidden>
+        No benchmark summary is available yet. Run a benchmark to populate this view.
+      </p>
+      <p class="tool-error" id="benchmark-error" role="alert" hidden></p>
+      <div class="benchmark-content" id="benchmark-content" hidden>
+        <section class="chart-panel panel" aria-labelledby="cost-chart-heading">
+          <h2 id="cost-chart-heading">Cost per verified outcome</h2>
+          <div class="benchmark-chart" id="cost-chart"></div>
+        </section>
+        <section class="chart-panel panel" aria-labelledby="pass-chart-heading">
+          <h2 id="pass-chart-heading">Pass rate · 95% Wilson CI</h2>
+          <div class="benchmark-chart" id="pass-chart"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" id="approval-overlay" hidden>
+    <section class="approval-drawer" id="approval-drawer" role="dialog" aria-modal="true"
+      aria-labelledby="approval-title" aria-describedby="approval-description" tabindex="-1">
+      <div class="drawer-topline">
+        <span class="kind-chip" id="approval-kind">Approval</span>
+        <span class="approval-countdown" id="approval-countdown">05:00</span>
+      </div>
+      <h2 id="approval-title">Approval required</h2>
+      <p id="approval-description"></p>
+      <p class="action-hash">Action hash <code id="approval-hash"></code></p>
+      <div class="approval-detail" id="approval-detail"></div>
+      <p class="approval-warning">This request expires in five minutes. Escape does not approve it.</p>
+      <div class="approval-actions">
+        <button class="danger-button" id="deny-approval" type="button">Deny</button>
+        <button class="secondary-button" id="approve-run" type="button">Approve for this run</button>
+        <button class="primary-button" id="approve-once" type="button">Approve once</button>
+      </div>
+      <p class="approval-feedback" id="approval-feedback" role="status" aria-live="polite"></p>
+    </section>
+  </div>
+
+  <div class="side-panel-backdrop" id="evidence-overlay" hidden>
+    <aside class="side-panel" id="evidence-panel" role="dialog" aria-modal="true"
+      aria-labelledby="evidence-title" tabindex="-1">
+      <div class="side-panel-heading">
+        <div>
+          <p class="eyebrow">Claim evidence</p>
+          <h2 id="evidence-title">Source</h2>
+        </div>
+        <button class="icon-button" id="close-evidence" type="button" aria-label="Close source evidence">×</button>
+      </div>
+      <dl class="source-metadata">
+        <div><dt>URL</dt><dd id="evidence-url"></dd></div>
+        <div><dt>Date</dt><dd id="evidence-date"></dd></div>
+        <div><dt>Source kind</dt><dd id="evidence-kind"></dd></div>
+      </dl>
+      <section class="evidence-quote" id="evidence-quote-section">
+        <h3>Verbatim quote</h3>
+        <blockquote id="evidence-quote"></blockquote>
+      </section>
+      <section class="evidence-checks" id="evidence-checks-section">
+        <h3>Verification checks</h3>
+        <ul id="evidence-checks"></ul>
+      </section>
+      <section class="evidence-source">
+        <h3>Source text</h3>
+        <div class="source-excerpt" id="evidence-source-text"></div>
+      </section>
+    </aside>
+  </div>
+
+  <div class="side-panel-backdrop" id="rejected-overlay" hidden>
+    <aside class="side-panel rejected-drawer" id="rejected-panel" role="dialog" aria-modal="true"
+      aria-labelledby="rejected-title" tabindex="-1">
+      <div class="side-panel-heading">
+        <div>
+          <p class="eyebrow">Verification audit</p>
+          <h2 id="rejected-title">Rejected claims</h2>
+        </div>
+        <button class="icon-button" id="close-rejected" type="button" aria-label="Close rejected claims">×</button>
+      </div>
+      <div id="rejected-groups"></div>
+    </aside>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,8 +1,10 @@
 import httpx
+from fastapi.testclient import TestClient
 from datetime import date, timedelta
 from kernel import GatewayError, Meter, BudgetExhausted, WebSearchError, tavily_news, verify
-from server import BriefIn, FixIn
-from modes import run_brief, run_fix
+from server import BriefIn, FixIn, app
+from modes import pytest as run_pytest, run_brief, run_fix
+from pathlib import Path
 
 T = date.today()
 SRC = {"date": (T - timedelta(3)).isoformat(), "text": "Acme closed a $60 million Series C round."}
@@ -78,3 +80,34 @@ def test_brief_gate():
 
 def test_fix_goes_green():
     assert run_fix()["status"] == "green"
+
+def test_pytest_removes_credentials_from_subprocess_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "test-secret")
+    (tmp_path / "test_env.py").write_text(
+        "import os\n"
+        "def test_credentials_are_absent():\n"
+        "    assert 'TAVILY_API_KEY' not in os.environ\n"
+    )
+
+    green, out = run_pytest(tmp_path)
+
+    assert green, out
+
+def test_pytest_timeout_fails_with_clear_message(tmp_path):
+    (tmp_path / "test_slow.py").write_text(
+        "import time\n"
+        "def test_slow():\n"
+        "    time.sleep(10)\n"
+    )
+
+    green, out = run_pytest(tmp_path, timeout=0.1)
+
+    assert not green
+    assert "pytest timed out after 0.1 seconds" in out
+
+def test_static_assets_are_scoped_to_frontend():
+    client = TestClient(app)
+
+    assert client.get("/").status_code == 200
+    for path in ("/kernel.py", "/server.py", "/.env"):
+        assert client.get(path).status_code == 404
