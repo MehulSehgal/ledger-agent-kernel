@@ -1399,6 +1399,9 @@ for (const [tabId, panelId] of workspaceTabs) {
 }
 byId("run-redteam").addEventListener("click", runRedteam);
 byId("refresh-benchmark").addEventListener("click", loadBenchmarkSummary);
+document.querySelectorAll(".preset-button").forEach((button) => {
+  button.addEventListener("click", () => applyPreset(button.dataset.preset));
+});
 byId("brief-tab").addEventListener("click", () => setMode("brief"));
 byId("fix-tab").addEventListener("click", () => setMode("fix"));
 byId("brief-sources").addEventListener("click", (event) => {
