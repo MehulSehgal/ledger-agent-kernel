@@ -516,6 +516,7 @@ def _apply_patches(sandbox, original, patches, candidate_paths=None):
 
 
 def _sandbox_changes(sandbox, original):
+    sandbox = Path(os.path.realpath(sandbox))
     paths = set(original)
     paths.update(str(path.relative_to(sandbox)) for path in _safe_py_files(sandbox))
     changed = {}
