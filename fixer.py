@@ -147,6 +147,10 @@ def _test_environment():
 
 def _run_test_command(sandbox, command, test_selector=None, timeout=120):
     argv = validate_test_cmd(command)
+    if argv[0].casefold() in {"python", "python.exe", "python3", "python3.exe"}:
+        executable = shutil.which(argv[0])
+        if executable is None:
+            argv[0] = sys.executable
     if test_selector:
         argv.append(test_selector)
     try:
