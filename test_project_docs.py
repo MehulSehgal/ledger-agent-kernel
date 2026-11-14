@@ -18,6 +18,14 @@ def test_requirements_pin_every_dependency():
     assert all(not any(operator in requirement for operator in ("<", ">", "~=")) for requirement in requirements)
 
 
+def test_vercel_deploys_the_fastapi_app_and_routes_all_requests():
+    config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+    assert config["builds"] == [{"src": "api/index.py", "use": "@vercel/python"}]
+    assert config["routes"] == [{"src": "/(.*)", "dest": "api/index.py"}]
+    entrypoint = (ROOT / "api" / "index.py").read_text(encoding="utf-8")
+    assert "from server import app" in entrypoint
+
+
 def test_ci_runs_pytest_on_push_with_python_312():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 

@@ -22,7 +22,7 @@ The policy engine, rather than model output or repository content, decides wheth
 | Benchmark runner and summarizer | Done | Produces run records and a summary when invoked. |
 | Bifrost and Tavily live connectivity | Not verified live | Requires configured endpoints and credentials; live service behavior has not been validated here. |
 | Recorded benchmark results | Done locally | Offline Ledger and baseline arms each passed 3/3 toy trials; see `bench/results/summary.json`. |
-| Green full test suite | Done locally | `python -m pytest -q` passes 121 tests; live provider behavior remains unverified. |
+| Green full test suite | Done locally | `python -m pytest -q` passes locally; live provider behavior remains unverified. |
 | GitHub Actions workflow | Done | Configured to run the test suite on pushes; remote execution has not been observed. |
 
 No live integration is marked verified live. The status above distinguishes implemented paths from externally validated service behavior.
@@ -56,6 +56,12 @@ py -m venv .venv
 ```
 
 Open the localhost address printed by Uvicorn. Without service credentials, use the offline paths for a local walkthrough. Keep the server process open while using the page.
+
+## Vercel deployment
+
+The repository includes a Vercel entrypoint and routing configuration. Import the GitHub repository into Vercel with the repository root as the project root, leave the build and output commands empty, and deploy. Add provider credentials as Vercel environment variables when live integrations are needed; enable `LEDGER_OFFLINE_STUB` to keep the hosted demo in offline mode.
+
+The Vercel function serves both the static interface and FastAPI routes. Serverless instances are ephemeral, so the in-memory run timeline and long-running Fix workflows are best suited to a persistent ASGI host for production use. Persistent production deployment is not done on Vercel, and live provider behavior is not verified live here.
 
 ## Environment variables
 
