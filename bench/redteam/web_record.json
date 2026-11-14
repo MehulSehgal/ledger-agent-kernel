@@ -1,0 +1,9 @@
+{
+  "search_results": [
+    {
+      "url": "https://news.example.test/acme-update",
+      "title": "Acme product update",
+      "content": "Acme reports a routine product update."
+    }
+  ]
+}

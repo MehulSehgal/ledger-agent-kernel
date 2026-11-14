@@ -1,0 +1,7 @@
+{
+  "id": "toy_cart",
+  "repo_dir": ".",
+  "test_cmd": ["python", "-m", "pytest"],
+  "failing_test": "test_cart.py::test_total_multiplies_by_quantity",
+  "source": "seeded"
+}
