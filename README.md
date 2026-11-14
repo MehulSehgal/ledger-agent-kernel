@@ -57,11 +57,13 @@ py -m venv .venv
 
 Open the localhost address printed by Uvicorn. Without service credentials, use the offline paths for a local walkthrough. Keep the server process open while using the page.
 
-## Vercel deployment
+## Split deployment
 
-The repository includes a Vercel entrypoint and routing configuration. Import the GitHub repository into Vercel with the repository root as the project root, leave the build and output commands empty, and deploy. Add provider credentials as Vercel environment variables when live integrations are needed; enable `LEDGER_OFFLINE_STUB` to keep the hosted demo in offline mode.
+Deploy the persistent FastAPI backend to Render using the included `render.yaml`. Set `LEDGER_CORS_ORIGINS` to the final Vercel origin, enable `LEDGER_OFFLINE_STUB` for an offline demo, and add provider credentials only when live integrations are needed.
 
-The Vercel function serves both the static interface and FastAPI routes. Serverless instances are ephemeral, so the in-memory run timeline and long-running Fix workflows are best suited to a persistent ASGI host for production use. Persistent production deployment is not done on Vercel, and live provider behavior is not verified live here.
+Deploy the `static/` directory as the Vercel project root. Before deploying, set `window.LEDGER_API_URL` in `static/runtime-config.js` to the Render service URL. The browser uses that value for API calls, run events, approvals, red-team checks, and benchmark loading.
+
+The root `vercel.json` remains available for a simple serverless preview, but the split deployment is recommended because the in-memory run timeline and long-running Fix workflows need a persistent ASGI process. Persistent production deployment is not done on Vercel, and live provider behavior is not verified live here.
 
 ## Environment variables
 

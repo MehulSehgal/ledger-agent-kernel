@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Literal
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -17,6 +18,20 @@ from router import configure_chaos
 from redteam import run_redteam
 
 app = FastAPI(title="Ledger")
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("LEDGER_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 class BriefIn(BaseModel):
     company: str = Field("Acme Robotics", min_length=1, max_length=200)
     meeting: str = Field("Thu 3pm", min_length=1, max_length=200)

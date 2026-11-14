@@ -26,6 +26,15 @@ def test_vercel_deploys_the_fastapi_app_and_routes_all_requests():
     assert "from server import app" in entrypoint
 
 
+def test_render_deploys_the_persistent_backend_and_frontend_has_runtime_api_config():
+    render = (ROOT / "render.yaml").read_text(encoding="utf-8")
+    runtime_config = (ROOT / "static" / "runtime-config.js").read_text(encoding="utf-8")
+    assert "type: web" in render
+    assert "uvicorn server:app --host 0.0.0.0 --port $PORT" in render
+    assert "LEDGER_CORS_ORIGINS" in render
+    assert "window.LEDGER_API_URL" in runtime_config
+
+
 def test_ci_runs_pytest_on_push_with_python_312():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 

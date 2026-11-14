@@ -1,4 +1,6 @@
 const byId = (id) => document.getElementById(id);
+const API_BASE = String(globalThis.LEDGER_API_URL || "").replace(/\/+$/, "");
+const apiUrl = (path) => `${API_BASE}${path}`;
 const terminalStates = new Set(["done", "error", "cancelled"]);
 const eventNames = [
   "step", "model_call", "claim", "budget", "failover", "approval_request",
@@ -755,7 +757,7 @@ function parseEvent(event) {
 function startStream(id) {
   closeStream();
   stopPolling();
-  const stream = new EventSource(`/api/runs/${encodeURIComponent(id)}/events`);
+  const stream = new EventSource(apiUrl(`/api/runs/${encodeURIComponent(id)}/events`));
   eventSource = stream;
   // Keep the same EventSource alive so native retries include Last-Event-ID.
   stream.addEventListener("open", () => {
@@ -796,7 +798,7 @@ function startPolling(id) {
   const poll = async () => {
     if (!runId || runId !== id) return stopPolling();
     try {
-      const response = await fetch(`/api/runs/${encodeURIComponent(id)}`);
+      const response = await fetch(apiUrl(`/api/runs/${encodeURIComponent(id)}`));
       if (!response.ok) throw new Error(`Run status request failed (${response.status})`);
       const status = await response.json();
       if (status.status === "completed") {
@@ -936,7 +938,7 @@ async function submitApproval(decision, once, timedOut = false) {
   setApprovalButtonsDisabled(true);
   byId("approval-feedback").textContent = timedOut ? "Time expired; denying action…" : "Submitting decision…";
   try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/approve`, {
+    const response = await fetch(apiUrl(`/api/runs/${encodeURIComponent(runId)}/approve`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hash: approval.data.hash, decision, once }),
@@ -1065,7 +1067,7 @@ async function startRun(event) {
     status: "running",
   });
   try {
-    const response = await fetch("/api/runs", {
+    const response = await fetch(apiUrl("/api/runs"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1110,7 +1112,7 @@ async function cancelRun() {
   if (!runId || terminalStates.has(byId("run-state").textContent.toLowerCase())) return;
   byId("cancel-run").disabled = true;
   try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
+    const response = await fetch(apiUrl(`/api/runs/${encodeURIComponent(runId)}/cancel`), {
       method: "POST",
     });
     const result = await response.json();
@@ -1240,7 +1242,7 @@ async function runRedteam() {
   byId("redteam-status").textContent = "Running scenarios…";
   byId("redteam-results").replaceChildren();
   try {
-    const response = await fetch("/api/redteam", { method: "POST" });
+    const response = await fetch(apiUrl("/api/redteam"), { method: "POST" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || `Red-team request failed (${response.status})`);
     renderRedteamResults(payload);
@@ -1359,7 +1361,7 @@ async function loadBenchmarkSummary() {
   byId("benchmark-error").hidden = true;
   byId("benchmark-content").hidden = true;
   try {
-    const response = await fetch("/api/bench/summary");
+    const response = await fetch(apiUrl("/api/bench/summary"));
     if (response.status === 404) {
       byId("benchmark-empty").hidden = false;
       return;
@@ -1467,7 +1469,7 @@ byId("meeting").value = new Date(now.getTime() - now.getTimezoneOffset() * 60000
 updateMeter(0, 12000);
 updateOutcomeStats();
 setRunState("idle");
-fetch("/api/status")
+fetch(apiUrl("/api/status"))
   .then((response) => response.json())
   .then((status) => {
     byId("service-status").textContent = status.bifrost || status.tavily
