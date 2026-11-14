@@ -15,6 +15,9 @@
   --violet: #6841a5;
   --violet-soft: #f0eafa;
   --shadow: 0 10px 28px #17232c12;
+  --accent: #2457d6;
+  --hero: #edf3ff;
+  --amber: #a86514;
 }
 
 @media (prefers-color-scheme: dark) {
