@@ -667,6 +667,33 @@ function handleResult(result) {
   stopPolling();
 }
 
+const demoPresets = {
+  board: {
+    company: "Acme Robotics",
+    confidential: false,
+  },
+  market: {
+    company: "Acme Robotics",
+    confidential: false,
+  },
+  confidential: {
+    company: "Acme Robotics",
+    confidential: true,
+  },
+};
+
+function applyPreset(name) {
+  const preset = demoPresets[name];
+  if (!preset) return;
+  setMode("brief");
+  byId("company").value = preset.company;
+  byId("confidential").checked = preset.confidential;
+  document.querySelectorAll(".preset-button").forEach((button) => {
+    button.classList.toggle("is-selected", button.dataset.preset === name);
+  });
+  byId("company").focus();
+}
+
 function showMeasuredSavings(result, receipt) {
   const baseline = result.baseline_measurement;
   if (!baseline || baseline.measured !== true || !receipt) return;
