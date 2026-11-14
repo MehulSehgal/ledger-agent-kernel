@@ -1,0 +1,57 @@
+{
+  "arms": {
+    "baseline": {
+      "cost_per_verified_outcome": null,
+      "mean_tokens_cached": {
+        "ci95": null,
+        "mean": null
+      },
+      "mean_tokens_in": {
+        "ci95": null,
+        "mean": null
+      },
+      "mean_tokens_out": {
+        "ci95": null,
+        "mean": null
+      },
+      "mean_usd": {
+        "ci95": null,
+        "mean": null
+      },
+      "n": 3,
+      "pass_rate": 1.0,
+      "pass_rate_ci95": [
+        0.4385029682449546,
+        1.0
+      ],
+      "passes": 3
+    },
+    "ledger": {
+      "cost_per_verified_outcome": null,
+      "mean_tokens_cached": {
+        "ci95": null,
+        "mean": null
+      },
+      "mean_tokens_in": {
+        "ci95": null,
+        "mean": null
+      },
+      "mean_tokens_out": {
+        "ci95": null,
+        "mean": null
+      },
+      "mean_usd": {
+        "ci95": null,
+        "mean": null
+      },
+      "n": 3,
+      "pass_rate": 1.0,
+      "pass_rate_ci95": [
+        0.4385029682449546,
+        1.0
+      ],
+      "passes": 3
+    }
+  },
+  "generated_at": "2026-11-14T15:44:44.629474+00:00"
+}
