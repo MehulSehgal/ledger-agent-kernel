@@ -181,7 +181,7 @@ def pytest(directory, timeout=120):
 
 
 def _safe_py_files(root):
-    root = Path(root).resolve()
+    root = Path(os.path.realpath(root))
     for path in root.rglob("*.py"):
         if not path.is_file() or path.is_symlink():
             continue
