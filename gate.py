@@ -39,6 +39,20 @@ def numbers_in(text):
     return values
 
 
+def quote_found(quote, source_text):
+    normalized_quote = re.sub(r"\s+", " ", quote.lower().replace(",", "")).strip()
+    normalized_source = re.sub(r"\s+", " ", source_text.lower().replace(",", "")).strip()
+    return fuzz.partial_ratio(normalized_quote, normalized_source) >= 92
+
+
+def numbers_match(claim, quote):
+    quote_numbers = numbers_in(quote)
+    return all(
+        any(math.isclose(number, quoted, rel_tol=1e-12, abs_tol=1e-12) for quoted in quote_numbers)
+        for number in numbers_in(claim)
+    )
+
+
 def _stem(word):
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
@@ -108,16 +122,16 @@ def verify(c, src, today, window=30, meter=None):
         return "source date outside window"
 
     quote = c["quote"]
-    normalized_quote = re.sub(r"\s+", " ", quote.lower().replace(",", "")).strip()
-    normalized_source = re.sub(r"\s+", " ", src["text"].lower().replace(",", "")).strip()
-    if fuzz.partial_ratio(normalized_quote, normalized_source) < 92:
+    if not quote_found(quote, src["text"]):
         return "quote not found in source text"
     if len(quote.split()) < 5 or len(quote) < 25:
         return "quote too short"
 
-    quote_numbers = numbers_in(quote)
-    for number in numbers_in(c["claim"]):
-        if not any(math.isclose(number, quoted, rel_tol=1e-12, abs_tol=1e-12) for quoted in quote_numbers):
+    if not numbers_match(c["claim"], quote):
+        quote_numbers = numbers_in(quote)
+        for number in numbers_in(c["claim"]):
+            if any(math.isclose(number, quoted, rel_tol=1e-12, abs_tol=1e-12) for quoted in quote_numbers):
+                continue
             display = str(int(number)) if number.is_integer() else str(number)
             return f"number {display} not in quote"
 

@@ -1,9 +1,12 @@
 """Ledger kernel: token meter + budget degrade, verification gate, Bifrost/Tavily clients."""
 import json, os, re, httpx, tempfile, threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from policy import classify_confidential
 from runs import NullRun
 
 tok = lambda s: max(1, len(s) // 4)
@@ -18,6 +21,40 @@ if not isinstance(_price_data, dict) or not isinstance(_price_data.get("models")
     raise ValueError("prices.json must contain a models object")
 PRICE_VERIFIED = _price_data.get("verified") is True
 PRICE = _price_data["models"]
+_SERVICE_CONTEXT = ContextVar("ledger_service_context", default=None)
+
+
+@contextmanager
+def service_context(*, live_llm=None, live_web=None, web_client=None, web_api_key=None):
+    context = dict(_SERVICE_CONTEXT.get() or {})
+    if live_llm is not None:
+        context["live_llm"] = bool(live_llm)
+    if live_web is not None:
+        context["live_web"] = bool(live_web)
+    if web_client is not None:
+        context["web_client"] = web_client
+    if web_api_key is not None:
+        context["web_api_key"] = web_api_key
+    token = _SERVICE_CONTEXT.set(context)
+    try:
+        yield
+    finally:
+        _SERVICE_CONTEXT.reset(token)
+
+
+def _web_post(url, **kwargs):
+    context = _SERVICE_CONTEXT.get() or {}
+    client = context.get("web_client")
+    if client is not None:
+        return client.post(url, **kwargs)
+    return httpx.post(url, **kwargs)
+
+
+def _web_api_key():
+    context = _SERVICE_CONTEXT.get() or {}
+    if "web_api_key" in context:
+        return context["web_api_key"]
+    return os.environ["TAVILY_API_KEY"]
 
 
 class UserUsageStore:
@@ -136,12 +173,24 @@ class Meter:
     user_id: str | None = None
     user_cap: int | None = None
     usage_store: UserUsageStore = field(default_factory=lambda: USER_USAGE, repr=False, compare=False)
+    repo_root: Path = field(
+        default_factory=lambda: Path(__file__).resolve().parent,
+        repr=False,
+        compare=False,
+    )
+    confidential_requested: bool = False
+    confidential: bool = False
     _pending_tokens: int = field(default=0, init=False, repr=False)
     _lock: object = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         if self.cap <= 0:
             raise ValueError("token budget must be positive")
+        self.repo_root = Path(self.repo_root).resolve()
+        self.confidential = self.confidential or classify_confidential(
+            self.repo_root,
+            self.confidential_requested,
+        )
         if self.user_id is not None:
             self.user_id = str(self.user_id).strip()[:128] or "default"
             if self.user_cap is None:
@@ -151,6 +200,13 @@ class Meter:
                     raise ValueError("LEDGER_USER_CAP must be a positive integer") from exc
             if self.user_cap <= 0:
                 raise ValueError("LEDGER_USER_CAP must be a positive integer")
+
+    def refresh_confidential(self, request_flag=None):
+        self.confidential = self.confidential or classify_confidential(
+            self.repo_root,
+            self.confidential_requested or bool(request_flag),
+        )
+        return self.confidential
 
     def used(self): return sum(c["in"] + c["out"] for c in self.calls)
 
@@ -245,7 +301,14 @@ class Meter:
             return None
         return (tin * input_rate + tout * output_rate) / 1_000_000
 
-    def log(self, label, tier, tin, tout, model=None, reservation=None, cached=False):
+    def log(self, label, tier, tin, tout, model=None, reservation=None, cached=False,
+            tokens_cached=None):
+        if tokens_cached is not None and (
+            isinstance(tokens_cached, bool)
+            or not isinstance(tokens_cached, int)
+            or tokens_cached < 0
+        ):
+            raise ValueError("tokens_cached must be a non-negative integer or None")
         model = model or "offline"
         if reservation is not None and not reservation.closed:
             if reservation.user_id is not None:
@@ -264,6 +327,7 @@ class Meter:
             "tier": tier,
             "in": tin,
             "out": tout,
+            "tokens_cached": tokens_cached,
             "model": model,
         })
         event_tier = tier if model != "offline" else "local"
@@ -274,6 +338,7 @@ class Meter:
             "model": model,
             "tokens_in": tin,
             "tokens_out": tout,
+            "tokens_cached": tokens_cached,
             "usd": round(usd, 8) if usd is not None else None,
             "cached": cached,
         })
@@ -302,8 +367,13 @@ class Meter:
             "prices_verified": PRICE_VERIFIED,
         }
 
-def live_llm(): return bool(os.getenv("BIFROST_URL"))
-def live_web(): return bool(os.getenv("TAVILY_API_KEY"))
+def live_llm():
+    context = _SERVICE_CONTEXT.get() or {}
+    return context.get("live_llm", bool(os.getenv("BIFROST_URL")))
+
+def live_web():
+    context = _SERVICE_CONTEXT.get() or {}
+    return context.get("live_web", bool(os.getenv("TAVILY_API_KEY")))
 
 def chat(meter, label, want, system, user, user_id=None):
     """Route one model call through the shared resilient router."""
@@ -330,10 +400,10 @@ def in_window(d, today, window=30):
 
 def tavily_news(query, today, window=30):
     try:
-        response = httpx.post(
+        response = _web_post(
             "https://api.tavily.com/search",
             timeout=30,
-            headers={"Authorization": "Bearer " + os.environ["TAVILY_API_KEY"]},
+            headers={"Authorization": "Bearer " + _web_api_key()},
             json={"query": query, "topic": "news", "max_results": 5,
                   "start_date": (today - timedelta(window)).isoformat(), "end_date": today.isoformat()},
         )
@@ -360,10 +430,10 @@ def tavily_extract(urls, query, chunks=3):
         if not batch:
             continue
         try:
-            response = httpx.post(
+            response = _web_post(
                 "https://api.tavily.com/extract",
                 timeout=60,
-                headers={"Authorization": "Bearer " + os.environ["TAVILY_API_KEY"]},
+                headers={"Authorization": "Bearer " + _web_api_key()},
                 json={
                     "urls": batch,
                     "query": query,

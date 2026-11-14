@@ -1,4 +1,5 @@
 """Run: uvicorn server:app --reload   (then open http://localhost:8000)."""
+import json
 import os
 import threading
 from pathlib import Path
@@ -9,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from kernel import BudgetExhausted, live_llm, live_web
-from modes import run_brief, run_fix
+from modes import run_brief
+from fixer import run_baseline, run_fix
 from runs import Run, RunCancelled, RunRegistry
 from router import configure_chaos
+from redteam import run_redteam
 
 app = FastAPI(title="Ledger")
 class BriefIn(BaseModel):
@@ -19,6 +22,7 @@ class BriefIn(BaseModel):
     meeting: str = Field("Thu 3pm", min_length=1, max_length=200)
     cap: int = Field(12000, ge=100, le=1_000_000)
     meeting_at: datetime | None = None
+    confidential: bool = False
 
     @field_validator("company", "meeting")
     @classmethod
@@ -29,11 +33,28 @@ class BriefIn(BaseModel):
         return value
 
 class FixIn(BaseModel):
+    repo_path: str
+    task: str | None = Field(None, max_length=4000)
+    test_cmd: list[str] = Field(default_factory=lambda: ["python", "-m", "pytest"])
+    failing_test: str | None = None
     cap: int = Field(6000, ge=100, le=1_000_000)
+    confidential: bool = False
+    baseline: bool = False
+    no_triage: bool = False
+    no_tavily: bool = False
+
+    @field_validator("repo_path")
+    @classmethod
+    def trim_repo_path(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("repo_path must not be blank")
+        return value
 
 class RunIn(BaseModel):
     mode: Literal["brief", "fix"]
     params: dict[str, Any] = Field(default_factory=dict)
+    confidential: bool = False
 
 class ApprovalIn(BaseModel):
     hash: str = Field(min_length=1)
@@ -45,6 +66,7 @@ class ChaosIn(BaseModel):
     mode: Literal["down", "slow", "429", "off"]
 
 run_registry = RunRegistry(limit=50)
+BENCH_SUMMARY_PATH = Path(__file__).parent / "bench" / "results" / "summary.json"
 
 
 def _execute_run(run: Run, mode: str, params: dict[str, Any], user_id: str):
@@ -53,7 +75,9 @@ def _execute_run(run: Run, mode: str, params: dict[str, Any], user_id: str):
         if mode == "brief":
             result = run_brief(**params, run=run, user_id=user_id)
         else:
-            result = run_fix(**params, run=run, user_id=user_id)
+            baseline = params.pop("baseline", False)
+            fix_runner = run_baseline if baseline else run_fix
+            result = fix_runner(**params, run=run, user_id=user_id)
         if not run.done:
             run.emit("result", result)
     except RunCancelled:
@@ -79,6 +103,29 @@ def status():
             "strong": os.getenv("LEDGER_STRONG", "anthropic/claude-sonnet-4-5"),
         },
     }
+
+
+@app.get("/api/bench/summary")
+def bench_summary():
+    try:
+        summary = json.loads(BENCH_SUMMARY_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="benchmark summary not found") from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail="benchmark summary is invalid JSON") from exc
+    return JSONResponse(content=summary)
+
+
+@app.post("/api/redteam")
+def redteam():
+    scenarios = run_redteam()
+    return {
+        "scenarios": scenarios,
+        "passed": sum(scenario["passed"] for scenario in scenarios),
+        "failed": sum(not scenario["passed"] for scenario in scenarios),
+    }
+
+
 @app.post("/api/brief")
 def brief(b: BriefIn, user_id: str = Header(default="default", alias="X-Ledger-User")):
     return run_brief(
@@ -87,11 +134,12 @@ def brief(b: BriefIn, user_id: str = Header(default="default", alias="X-Ledger-U
         b.cap,
         b.meeting_at,
         user_id=user_id,
+        confidential=b.confidential,
     )
 
 @app.post("/api/fix")
 def fix(b: FixIn, user_id: str = Header(default="default", alias="X-Ledger-User")):
-    return run_fix(b.cap, user_id=user_id)
+    return run_fix(**b.model_dump(), user_id=user_id)
 
 @app.post("/api/runs", status_code=202)
 def create_run(
@@ -104,6 +152,7 @@ def create_run(
             if request.mode == "brief"
             else FixIn(**request.params).model_dump()
         )
+        params["confidential"] = params["confidential"] or request.confidential
     except ValidationError as exc:
         raise HTTPException(
             status_code=422,

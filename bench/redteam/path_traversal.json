@@ -1,0 +1,5 @@
+{
+  "id": "path-traversal",
+  "repo_path": "../../outside",
+  "write_target": "../../outside/sentinel.txt"
+}

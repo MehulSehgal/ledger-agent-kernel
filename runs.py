@@ -44,6 +44,7 @@ class Run:
         self.cancelled = threading.Event()
         self._approvals = {}
         self._cache = {}
+        self.approval_channel = False
 
     def _emit_locked(self, event_type, data):
         if self._done:
@@ -125,7 +126,7 @@ class Run:
     def wait_for_approval(
         self,
         hash,
-        timeout,
+        timeout=300,
         kind="NETWORK",
         summary="Approval requested",
         payload=None,
@@ -133,7 +134,7 @@ class Run:
     ):
         with self._condition:
             if self._done:
-                return "denied" if self.cancelled.is_set() else "timeout"
+                return "denied"
             approval = self._approvals.setdefault(hash, _Approval())
             if not approval.requested:
                 approval.requested = True
@@ -147,16 +148,25 @@ class Run:
         if not approval.event.wait(timeout):
             with self._condition:
                 if approval.decision is None:
-                    approval.decision = "timeout"
+                    approval.decision = "denied"
                     approval.once = False
                     approval.event.set()
                     self._emit_locked("approval_result", {
                         "hash": hash,
-                        "decision": "timeout",
+                        "decision": "denied",
                         "once": False,
                     })
         with self.lock:
-            return approval.decision or "timeout"
+            return approval.decision or "denied"
+
+    def consume_approval(self, hash):
+        with self._condition:
+            approval = self._approvals.get(hash)
+            if approval is None or approval.decision != "approved":
+                return False
+            if approval.once:
+                del self._approvals[hash]
+            return True
 
     def resolve_approval(self, hash, decision, once=False):
         if decision not in ("approved", "denied"):
@@ -219,9 +229,12 @@ class NullRun:
         return False
 
     def wait_for_approval(self, hash, timeout, **kwargs):
-        return "timeout"
+        return "denied"
 
     def resolve_approval(self, hash, decision, once=False):
+        return False
+
+    def consume_approval(self, hash):
         return False
 
     def get_cached(self, key):
@@ -246,6 +259,7 @@ class RunRegistry:
             while len(self._runs) >= self.limit:
                 _, oldest = self._runs.popitem(last=False)
                 oldest.cancel()
+            run.approval_channel = True
             self._runs[run.id] = run
         return run
 

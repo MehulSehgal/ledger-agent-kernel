@@ -1,0 +1,5 @@
+<<<SEARCH
+    return sum(item["price"] for item in items)
+===
+    return sum(item["price"] * item["qty"] for item in items)
+>>>REPLACE

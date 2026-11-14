@@ -1,10 +1,10 @@
-"""Brief mode and Fix mode on the shared kernel. Runs fully offline unless BIFROST_URL / TAVILY_API_KEY are set."""
-import re, ast, sys, json, tempfile, subprocess, os, html
+"""Brief pipeline using the shared kernel."""
+import re, json, os, html
 from pathlib import Path
 from datetime import date, timedelta
 from math import log
 from kernel import *
-from gate import support_check
+from gate import numbers_match, quote_found, support_check, verify
 from runs import NULL_RUN
 
 QUERIES = {"news": "{c} news", "launches": "{c} product launch", "hires": "{c} hires appointed",
@@ -102,6 +102,23 @@ def _possible_injection(text):
     return bool(_INJECTION_PATTERNS.search(text))
 
 
+def _claim_checks(claim, source, today, reason):
+    quote = claim.get("quote")
+    text = source.get("text") if source else None
+    valid_quote = isinstance(quote, str) and isinstance(text, str)
+    claim_text = claim.get("claim")
+    valid_claim = isinstance(claim_text, str)
+    return {
+        "fetched": source is not None,
+        "date_in_window": bool(source and in_window(source.get("date"), today)),
+        "quote_found": bool(valid_quote and quote_found(quote, text)),
+        "numbers_match": bool(
+            valid_quote and valid_claim and numbers_match(claim_text, quote)
+        ),
+        "supported": reason is None,
+    }
+
+
 def _step(run, step_id, title, status, detail=""):
     run.emit("step", {
         "id": step_id,
@@ -186,15 +203,33 @@ def _live_questions(meter, company, claims):
     return questions
 
 
-def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=None):
+def run_brief(
+    company,
+    meeting,
+    cap=12000,
+    meeting_at=None,
+    run=None,
+    user_id=None,
+    confidential=False,
+    repo_root=None,
+):
     run = run or NULL_RUN
     run.check_cancelled()
+    root = Path(repo_root or Path(__file__).resolve().parent).resolve()
+    m = Meter(
+        cap,
+        run=run,
+        user_id=user_id,
+        repo_root=root,
+        confidential_requested=confidential,
+    )
+    confidential = m.refresh_confidential(confidential)
     _step(run, "sources", "Collect sources", "running")
-    m, today = Meter(cap, run=run, user_id=user_id), date.today()
+    today = date.today()
     meeting_date = meeting_at.date() if meeting_at else today
     window_end = min(meeting_date, today)
     window_start = window_end - timedelta(days=30)
-    live = live_web()
+    live = not confidential and live_web()
     raw = [dict(s, topic=k) for k, q in QUERIES.items() for s in tavily_news(q.format(c=company), window_end)] if live else demo_sources(company, window_end)
     run.check_cancelled()
     seen, srcs, dropped = set(), [], []
@@ -289,7 +324,8 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
             else None
         )
         why = verify(c, source, window_end, meter=m)
-        claim_events.append((claim_id, c, source, why))
+        checks = _claim_checks(c, source, window_end, why)
+        claim_events.append((claim_id, c, source, why, checks))
         if c.get("injected"):
             red_team.append({
                 "claim": c["claim"],
@@ -310,7 +346,7 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
             c["topic"] = source.get("topic", "news")
             ok.append(c)
     source_nums = {i: n + 1 for n, i in enumerate(sorted({c["source_id"] for c in ok}))}
-    for claim_id, claim, source, why in claim_events:
+    for claim_id, claim, source, why, checks in claim_events:
         run.emit("claim", {
             "id": claim_id,
             "text": claim["claim"],
@@ -320,6 +356,8 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
             "quote": claim.get("quote", ""),
             "url": source.get("url") if source else None,
             "date": source.get("date") if source else None,
+            "checks": checks,
+            "label": "red-team test claim" if claim.get("injected") else None,
         })
     _step(
         run,
@@ -363,6 +401,9 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
         run.check_cancelled()
 
     claim_by_id = {claim["claim_id"]: claim for claim in ok}
+    claim_checks_by_id = {
+        claim_id: checks for claim_id, _, _, _, checks in claim_events
+    }
     supported_bullets = []
     for bullet in bullets:
         cited_claims = [claim_by_id[cid] for cid in bullet["claim_ids"] if cid in claim_by_id]
@@ -391,6 +432,29 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
         bullet["cites"] = list(dict.fromkeys(
             source_nums[claim["source_id"]] for claim in cited_claims
         ))
+        bullet["checks"] = {
+            check_name: all(
+                claim_checks_by_id[claim["claim_id"]][check_name]
+                for claim in cited_claims
+            )
+            for check_name in (
+                "fetched",
+                "date_in_window",
+                "quote_found",
+                "numbers_match",
+                "supported",
+            )
+        }
+        bullet["evidence"] = [
+            {
+                "claim_id": claim["claim_id"],
+                "claim": claim["claim"],
+                "quote": claim["quote"],
+                "source_n": source_nums[claim["source_id"]],
+                "checks": claim_checks_by_id[claim["claim_id"]],
+            }
+            for claim in cited_claims
+        ]
         supported_bullets.append(bullet)
     bullets = supported_bullets
 
@@ -409,8 +473,22 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
             "url": s["url"],
             "date": s["date"],
             "source_kind": s["source_kind"],
+            "text": s["text"][:2000],
         }
         for s in srcs if s["id"] in source_nums
+    ]
+    rejected_claims = [
+        {
+            "id": claim_id,
+            "claim": claim["claim"],
+            "quote": claim.get("quote", ""),
+            "reason": reason,
+            "label": "red-team test claim" if claim.get("injected") else None,
+            "source_n": source_nums.get(source["id"]) if source else None,
+            "checks": checks,
+        }
+        for claim_id, claim, source, reason, checks in claim_events
+        if reason is not None
     ]
     audit = {
         "accepted": len(ok),
@@ -422,6 +500,7 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
             for s in srcs
         ],
         "rejected_bullets": rejected_bullets,
+        "rejected_claims": rejected_claims,
     }
     if extract_error:
         audit["extract_error"] = extract_error
@@ -439,106 +518,36 @@ def run_brief(company, meeting, cap=12000, meeting_at=None, run=None, user_id=No
     run.emit("result", result)
     return result
 
-# ---------------- Fix mode ----------------
-TOY = {"cart.py": '''PRICES = {"pen": 2, "book": 12}
+# ---------------- Fix mode compatibility exports ----------------
+def pytest(directory, timeout=120):
+    from fixer import _run_test_command
 
-def format_price(x):
-    return "$%.2f" % x
+    return _run_test_command(directory, ["python", "-m", "pytest"], timeout=timeout)
 
-def apply_discount(x, pct):
-    return x * (1 - pct / 100)
 
-def total(items):
-    return sum(i["price"] for i in items)
+def run_fix(
+    cap=6000,
+    run=None,
+    user_id=None,
+    repo_root=None,
+    confidential=False,
+    repo_path=None,
+    task=None,
+    test_cmd=None,
+):
+    """Compatibility entry point; Fix mode itself lives in fixer.py."""
+    import fixer
 
-def receipt_lines(items):
-    return [f'{i["name"]}: {format_price(i["price"] * i["qty"])}' for i in items]
-
-def shipping(x):
-    return 0 if x > 50 else 5
-''', "test_cart.py": '''from cart import total
-
-def test_total_uses_quantity():
-    items = [{"name": "pen", "price": 10, "qty": 2}, {"name": "book", "price": 5, "qty": 2}]
-    assert total(items) == 30
-'''}
-
-def pytest(d, timeout: float = 120):
-    env = {
-        name: value for name, value in os.environ.items()
-        if name.upper() != "BIFROST_URL"
-        and not any(secret in name.upper() for secret in ("KEY", "TOKEN", "SECRET", "PASSWORD"))
-    }
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    try:
-        p = subprocess.run(
-            [sys.executable, "-m", "pytest", "-x", "-q", "--tb=short", "-p", "no:cacheprovider"],
-            cwd=d, capture_output=True, text=True, env=env, timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        def as_text(output):
-            if isinstance(output, bytes): return output.decode(errors="replace")
-            return output or ""
-
-        message = f"pytest timed out after {timeout} seconds"
-        stdout, stderr = as_text(exc.stdout), as_text(exc.stderr)
-        if stdout: message += f"\nstdout:\n{stdout}"
-        if stderr: message += f"\nstderr:\n{stderr}"
-        return False, message
-    return p.returncode == 0, p.stdout
-
-def run_fix(cap=6000, run=None, user_id=None):
-    run = run or NULL_RUN
-    run.check_cancelled()
-    _step(run, "tests", "Run tests", "running")
-    d = Path(tempfile.mkdtemp()); m = Meter(cap, run=run, user_id=user_id); steps = []
-
-    def add_step(step_id, title, detail, ok):
-        steps.append({"step": title, "detail": detail, "ok": ok})
-        _step(run, step_id, title, "ok" if ok else "fail", detail)
-
-    def finish(result):
-        run.emit("result", result)
-        return result
-
-    for n, t in TOY.items(): (d / n).write_text(t)
-    green, out = pytest(d)
-    run.check_cancelled()
-    add_step("tests", "Run tests", "failing" if not green else "already green, 0 tokens spent", green)
-    if green: return finish({"mode": "fix", "steps": steps, "receipt": m.receipt(), "status": "green"})
-    _step(run, "localize", "Localize failure", "running")
-    frames = {f for _, _, f in re.findall(r"^(\S+\.py):(\d+): in (\w+)", out, re.M)}
-    defs = {}
-    for f in d.glob("*.py"):
-        src = f.read_text()
-        for n in ast.parse(src).body:
-            if isinstance(n, ast.FunctionDef): defs[n.name] = (f.name, ast.get_source_segment(src, n))
-    called = {c.func.id for n in ast.walk(ast.parse(TOY["test_cart.py"])) for c in [n] if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
-    cands = [k for k in defs if (k in frames or k in called) and not k.startswith("test_")]
-    repo_map = "\n".join(f"{f}: def {n}(...)" for n, (f, _) in defs.items())
-    ctx = repo_map + "\n\n" + "\n\n".join(defs[k][1] for k in cands)
-    full = sum(len(t) for t in TOY.values()) // 4
-    add_step("localize", "Localize (no LLM)", f"traceback frames + called symbols → {', '.join(cands)}; context {tok(ctx)} tok vs {full} tok full files", True)
-    _step(run, "patch", "Generate patch", "running")
-    fail = "\n".join(l for l in out.splitlines() if l.startswith("E "))[:300]
-    prompt = f"Fix the bug. Reply with SEARCH/REPLACE blocks only.\nFailure: {fail}\n{ctx}"
-    try:
-        if live_llm(): reply = chat(m, "patch", "strong", "Output <<<SEARCH ... === ... >>>REPLACE blocks for file cart.py.", prompt)
-        else:
-            reply = '<<<SEARCH\n    return sum(i["price"] for i in items)\n===\n    return sum(i["price"] * i["qty"] for i in items)\n>>>REPLACE'
-            m.log("patch (offline stub)", "strong", tok(prompt), tok(reply))
-        run.check_cancelled()
-    except BudgetExhausted:
-        add_step("budget", "Budget", "cap reached, returning partial result", False)
-        return finish({"mode": "fix", "steps": steps, "receipt": m.receipt(), "status": "partial"})
-    diff = []
-    for a, b in re.findall(r"<<<SEARCH\n(.*?)\n===\n(.*?)\n>>>REPLACE", reply, re.S):
-        p = d / "cart.py"; s = p.read_text()
-        if s.count(a) == 1: p.write_text(s.replace(a, b)); diff.append({"old": a, "new": b})
-    add_step("apply-diff", "Apply diff-only edit", f"{len(diff)} SEARCH/REPLACE block applied", bool(diff))
-    _step(run, "retest", "Re-run tests", "running")
-    green, _ = pytest(d)
-    run.check_cancelled()
-    add_step("retest", "Re-run tests", "green, early exit" if green else "still failing", green)
-    r = m.receipt(); base = full + tok(out) * 3
-    return finish({"mode": "fix", "live": live_llm(), "steps": steps, "diff": diff, "receipt": r, "baseline_tokens": base, "status": "green" if green else "red"})
+    target_repo = repo_path if repo_path is not None else repo_root
+    return fixer._run_fix(
+        repo_path=target_repo,
+        task=task,
+        test_cmd=test_cmd,
+        cap=cap,
+        run=run,
+        user_id=user_id,
+        confidential=confidential,
+        chat_fn=chat,
+        live_fn=live_llm,
+        test_runner=fixer._run_test_command,
+    )

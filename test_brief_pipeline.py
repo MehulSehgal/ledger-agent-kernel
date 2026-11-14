@@ -133,6 +133,63 @@ def test_failed_extract_falls_back_to_snippet_and_is_audited(monkeypatch):
     assert result["audit"]["source_kinds"] == [{"url": url, "source_kind": "snippet"}]
 
 
+def test_brief_includes_capped_source_text_and_bullet_verification_checks(monkeypatch):
+    quote = "Acme expanded its factory production capacity to support additional customer orders this year."
+    extracted = quote + " " + ("Additional source detail. " * 120)
+    _brief(
+        monkeypatch,
+        [_source("https://a.test", "Acme expanded capacity.")],
+        extract=({"https://a.test": extracted}, []),
+        claims=[{"source_id": 0, "claim": quote, "quote": quote}],
+    )
+
+    result = modes.run_brief("Acme", "Planning")
+
+    source = result["sources"][0]
+    bullet = result["bullets"][0]
+    checks = {
+        "fetched": True,
+        "date_in_window": True,
+        "quote_found": True,
+        "numbers_match": True,
+        "supported": True,
+    }
+    assert source["source_kind"] == "extract"
+    assert source["text"] == extracted[:2000]
+    assert len(source["text"]) <= 2000
+    assert bullet["checks"] == checks
+    assert bullet["evidence"][0]["quote"] == quote
+    assert bullet["evidence"][0]["checks"] == checks
+
+
+def test_rejected_claim_audit_includes_checks_and_red_team_label(monkeypatch):
+    quote = "Acme expanded its factory production capacity to support additional customer orders this year."
+    _brief(
+        monkeypatch,
+        [_source("https://a.test", quote)],
+        claims=[{
+            "source_id": 0,
+            "claim": "Acme raised $99 million to expand production this year.",
+            "quote": quote,
+            "injected": True,
+            "red_team_case": "numeric-mismatch",
+        }],
+    )
+
+    result = modes.run_brief("Acme", "Planning")
+
+    rejected = result["audit"]["rejected_claims"][0]
+    assert rejected["reason"] == "number 99000000 not in quote"
+    assert rejected["label"] == "red-team test claim"
+    assert rejected["checks"] == {
+        "fetched": True,
+        "date_in_window": True,
+        "quote_found": True,
+        "numbers_match": False,
+        "supported": False,
+    }
+
+
 def test_meeting_at_bounds_window_and_empty_verified_claims_have_no_questions(monkeypatch):
     meeting_at = datetime.combine(date.today() - timedelta(days=10), datetime.min.time())
     old_source = _source(
