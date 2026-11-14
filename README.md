@@ -74,7 +74,7 @@ Unset variables use the defaults documented by the code where applicable. Secret
 | `TAVILY_API_KEY` | Credential for Tavily search and extraction. |
 | `LEDGER_ALLOWED_ROOTS` | Path-separated roots within which Fix may accept repositories. |
 | `LEDGER_USER_CAP` | Positive per-user token cap. |
-| `LEDGER_USAGE_FILE` | Optional path for the usage ledger. |
+| `LEDGER_BUDGET_FILE` | Optional path for the persisted per-user budget ledger. `LEDGER_USAGE_FILE` remains a compatibility fallback. |
 | `LEDGER_OFFLINE_STUB` | Enables the explicitly labeled offline patch stub for the toy task. |
 | `LEDGER_DEMO` | Enables demo-only routing and chaos hooks. |
 | `LEDGER_MODEL_CHEAP` | Model identifier used by the standalone service smoke check. |

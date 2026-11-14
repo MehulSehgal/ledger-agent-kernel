@@ -68,7 +68,7 @@ class UserUsageStore:
     def _path(self):
         if self.path is not None:
             return self.path
-        configured = os.getenv("LEDGER_USAGE_FILE")
+        configured = os.getenv("LEDGER_BUDGET_FILE") or os.getenv("LEDGER_USAGE_FILE")
         return Path(configured) if configured else Path.home() / ".ledger-agent-kernel" / "usage.json"
 
     def _read_locked(self):

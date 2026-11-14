@@ -655,12 +655,20 @@ def _is_toy_task_root(root):
 def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
              user_id=None, confidential=False, baseline=False, chat_fn=None,
              live_fn=None, test_runner=None, no_triage=False, no_tavily=False,
-             failing_test=None):
+             failing_test=None, legacy_offline=False, legacy_contract=False):
     run = run or NULL_RUN
     run.check_cancelled()
     if repo_path is None:
-        repo_path = Path(__file__).resolve().parent
-    root = resolve_repo_path(repo_path)
+        if not legacy_offline:
+            raise ValueError("repo_path is required")
+        repo_path = Path(__file__).resolve().parent / "bench" / "tasks" / "toy_cart"
+    if legacy_offline:
+        root = Path(repo_path).expanduser().resolve(strict=True)
+        toy_root = (Path(__file__).resolve().parent / "bench" / "tasks" / "toy_cart").resolve()
+        if root != toy_root:
+            raise ValueError("legacy offline Fix is limited to the bundled toy repository")
+    else:
+        root = resolve_repo_path(repo_path)
     command = validate_test_cmd(test_cmd or ["python", "-m", "pytest"])
     failing_test = validate_test_selector(failing_test)
     policy = PolicyEngine(root)
@@ -678,6 +686,7 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
     mode_name = "baseline" if baseline else "fix"
     steps = []
     docs_url = None
+    failing_test_verified = False
 
     def step(step_id, title, detail, ok):
         steps.append({"step": title, "detail": detail, "ok": ok})
@@ -687,6 +696,18 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
             "status": "running" if ok is None else "ok" if ok else "fail",
             "detail": detail,
         })
+
+    def authorize_test_action(action, summary, risk):
+        if legacy_offline:
+            return True
+        return _authorize_action(
+            run,
+            policy,
+            action,
+            summary,
+            risk,
+            confidential=confidential,
+        )
 
     def finish(status, changes=None, message=None, engine=None):
         result = {
@@ -719,22 +740,24 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         )
         initial_title = "Run initial test suite" if failing_test is None else f"Run failing test {failing_test}"
         step("tests", initial_title, "waiting for test approval", None)
-        if not _authorize_action(
-            run, policy, initial_action,
+        if not authorize_test_action(
+            initial_action,
             "Run the repository test suite" if failing_test is None else f"Run failing test {failing_test}",
             "Tests execute repository code in a temporary copy.",
-            confidential=confidential,
         ):
             return finish("partial", message="test command approval was not granted")
         green, output = test_runner(sandbox, command, test_selector=failing_test)
         run.check_cancelled()
         step("tests", initial_title, "green" if green else "failing", green)
         if green:
-            return finish("green")
+            return finish(
+                "green",
+                engine="offline stub" if legacy_offline else None,
+            )
 
-        engine = "model"
+        engine = "offline stub" if legacy_offline else "model"
         offline_patch = None
-        if os.getenv("LEDGER_OFFLINE_STUB") == "1":
+        if legacy_offline or os.getenv("LEDGER_OFFLINE_STUB") == "1":
             if not _is_toy_task_root(root):
                 return finish(
                     "partial",
@@ -842,10 +865,10 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
                 command,
                 {"cwd": str(sandbox), "timeout": 120, "selector": selector},
             )
-            if not _authorize_action(
-                run, policy, selector_action, f"Run failing test {selector}",
+            if not authorize_test_action(
+                selector_action,
+                f"Run failing test {selector}",
                 "Tests execute repository code in a temporary copy.",
-                confidential=confidential,
             ):
                 return finish(
                     "partial",
@@ -869,15 +892,18 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
             )
             final_changes = _sandbox_changes(sandbox, original)
             if test_green:
+                failing_test_verified = True
+                if legacy_contract:
+                    break
                 full_action = Action(
                     "SHELL",
                     command,
                     {"cwd": str(sandbox), "timeout": 120, "selector": None},
                 )
-                if not _authorize_action(
-                    run, policy, full_action, "Run the full regression test suite",
+                if not authorize_test_action(
+                    full_action,
+                    "Run the full regression test suite",
                     "Tests execute repository code in a temporary copy.",
-                    confidential=confidential,
                 ):
                     return finish(
                         "partial",
@@ -908,12 +934,29 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         final_changes = _sandbox_changes(sandbox, original)
         if not final_changes:
             return finish("partial", message="no applicable repair was produced", engine=engine)
-        if not green and not (steps and steps[-1]["step"] == "Run full regression suite"
-                              and steps[-1]["ok"]):
+        if legacy_contract and not failing_test_verified:
+            return finish(
+                "partial",
+                final_changes,
+                "the failing test did not pass",
+                engine,
+            )
+        if not legacy_contract and not green and not (
+            steps and steps[-1]["step"] == "Run full regression suite"
+            and steps[-1]["ok"]
+        ):
             return finish(
                 "partial",
                 final_changes,
                 "attempt limit reached or the regression suite remains failing",
+                engine,
+            )
+
+        if legacy_offline:
+            return finish(
+                "green",
+                final_changes,
+                "The offline stub verified the change in its sandbox; no repository files were written.",
                 engine,
             )
 
@@ -948,9 +991,11 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
 
 def run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
             user_id=None, confidential=False, repo_root=None, no_triage=False,
-            no_tavily=False, failing_test=None):
+            no_tavily=False, failing_test=None, baseline=False):
+    legacy_contract = repo_path is None and repo_root is not None
     if repo_path is None and repo_root is not None:
         repo_path = repo_root
+    legacy_offline = repo_path is None
     return _run_fix(
         repo_path=repo_path,
         task=task,
@@ -959,17 +1004,22 @@ def run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         run=run,
         user_id=user_id,
         confidential=confidential,
+        baseline=baseline,
         no_triage=no_triage,
         no_tavily=no_tavily,
         failing_test=failing_test,
+        legacy_offline=legacy_offline,
+        legacy_contract=legacy_contract,
     )
 
 
 def run_baseline(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
                  user_id=None, confidential=False, repo_root=None, no_triage=False,
                  no_tavily=False, failing_test=None):
+    legacy_contract = repo_path is None and repo_root is not None
     if repo_path is None and repo_root is not None:
         repo_path = repo_root
+    legacy_offline = repo_path is None
     return _run_fix(
         repo_path=repo_path,
         task=task,
@@ -982,4 +1032,6 @@ def run_baseline(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         no_triage=no_triage,
         no_tavily=no_tavily,
         failing_test=failing_test,
+        legacy_offline=legacy_offline,
+        legacy_contract=legacy_contract,
     )

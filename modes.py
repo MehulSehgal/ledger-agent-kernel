@@ -534,11 +534,17 @@ def run_fix(
     repo_path=None,
     task=None,
     test_cmd=None,
+    baseline=False,
+    no_triage=False,
+    no_tavily=False,
+    failing_test=None,
 ):
     """Compatibility entry point; Fix mode itself lives in fixer.py."""
     import fixer
 
+    legacy_contract = repo_path is None and repo_root is not None
     target_repo = repo_path if repo_path is not None else repo_root
+    legacy_offline = target_repo is None
     return fixer._run_fix(
         repo_path=target_repo,
         task=task,
@@ -547,7 +553,13 @@ def run_fix(
         run=run,
         user_id=user_id,
         confidential=confidential,
+        baseline=baseline,
         chat_fn=chat,
         live_fn=live_llm,
         test_runner=fixer._run_test_command,
+        no_triage=no_triage,
+        no_tavily=no_tavily,
+        failing_test=failing_test,
+        legacy_offline=legacy_offline,
+        legacy_contract=legacy_contract,
     )

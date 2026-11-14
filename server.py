@@ -33,7 +33,7 @@ class BriefIn(BaseModel):
         return value
 
 class FixIn(BaseModel):
-    repo_path: str
+    repo_path: str | None = None
     task: str | None = Field(None, max_length=4000)
     test_cmd: list[str] = Field(default_factory=lambda: ["python", "-m", "pytest"])
     failing_test: str | None = None
@@ -46,6 +46,8 @@ class FixIn(BaseModel):
     @field_validator("repo_path")
     @classmethod
     def trim_repo_path(cls, value):
+        if value is None:
+            return None
         value = value.strip()
         if not value:
             raise ValueError("repo_path must not be blank")

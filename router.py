@@ -188,9 +188,12 @@ def complete(run, meter, label, tier, system, user, user_id=None):
         meter.run = run
     confidential = meter.refresh_confidential()
     local_models, local_providers = _local_chain(run) if confidential else (None, None)
-    user_id = user_id or meter.user_id or "default"
-    if meter.user_id is None:
-        meter.user_id = user_id
+    associated_user_id = user_id if user_id is not None else meter.user_id
+    route_user_id = "default"
+    if associated_user_id is not None:
+        route_user_id = str(associated_user_id).strip()[:128] or "default"
+    if meter.user_id is None and associated_user_id is not None:
+        meter.user_id = route_user_id
         if meter.user_cap is None:
             try:
                 meter.user_cap = int(os.getenv("LEDGER_USER_CAP", "12000"))
@@ -229,7 +232,7 @@ def complete(run, meter, label, tier, system, user, user_id=None):
         meter.release(reservation)
         raise GatewayError("No Bifrost models are configured for this tier.")
 
-    key = _api_key(user_id, confidential=confidential)
+    key = _api_key(route_user_id, confidential=confidential)
     if confidential and not key:
         meter.release(reservation)
         _confidential_violation(
