@@ -658,6 +658,7 @@ function handleResult(result) {
     byId("brief-result").hidden = true;
     byId("brief-actions").hidden = true;
   }
+  updateOutcomeStats(result);
   showMeasuredSavings(result, receipt);
   closeSidePanel();
   closeApprovalDrawer();
