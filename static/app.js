@@ -1465,6 +1465,7 @@ now.setMinutes(now.getMinutes() + 60 - now.getMinutes() % 60, 0, 0);
 byId("meeting").value = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
   .toISOString().slice(0, 16);
 updateMeter(0, 12000);
+updateOutcomeStats();
 setRunState("idle");
 fetch("/api/status")
   .then((response) => response.json())
