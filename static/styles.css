@@ -787,7 +787,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
 @page { margin: 0.55in; }
 @media print {
   body { min-width: 0; background: #fff; color: #111; }
-  .topbar, .screen-tabs, .tool-screen, .control-panel, .meter-panel, .failover-banner, .timeline,
+  .topbar, .screen-tabs, .tool-screen, .hero-banner, .signal-strip, .control-panel, .meter-panel, .failover-banner, .timeline,
   .blocked-panel, .timeline-tools, .brief-actions, .side-panel-backdrop, .copy-feedback {
     display: none !important;
   }
