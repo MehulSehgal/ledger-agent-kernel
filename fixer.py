@@ -631,6 +631,7 @@ def _candidate_context(candidates):
 
 
 def _all_file_context(sandbox):
+    sandbox = Path(os.path.realpath(sandbox))
     return "\n\n".join(
         f"# {path.relative_to(sandbox)}\n{path.read_text(encoding='utf-8')}"
         for path in _safe_py_files(sandbox)
