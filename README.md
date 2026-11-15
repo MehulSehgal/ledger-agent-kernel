@@ -89,11 +89,11 @@ Open the localhost address printed by Uvicorn. Without service credentials, use 
 
 The repository is organized for a split deployment:
 
-- **Backend:** repository root, [`server.py`](server.py), [`requirements.txt`](requirements.txt), and [`render.yaml`](render.yaml). Deploy this service to Render.
+- **Backend:** repository root, [`server.py`](server.py), [`requirements.txt`](requirements.txt), [`Dockerfile`](Dockerfile), and [`fly.toml.example`](fly.toml.example). Deploy this service to Fly.io.
 - **Frontend:** [`static/`](static/). Set `static` as the Vercel project root or publish directory on another static host.
 - **Connection:** set `window.LEDGER_API_URL` in [`static/runtime-config.js`](static/runtime-config.js) to the backend URL, then set the frontend origin in `LEDGER_CORS_ORIGINS` on the backend.
 
-See the step-by-step provider settings in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+See the step-by-step Fly.io and Vercel settings in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 The root `vercel.json` remains available for a simple serverless preview, but the split deployment is recommended because the in-memory run timeline and long-running Fix workflows need a persistent ASGI process. Persistent production deployment is not done on Vercel, and live provider behavior is not verified live here.
 
