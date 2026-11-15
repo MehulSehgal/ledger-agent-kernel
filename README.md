@@ -10,8 +10,6 @@ unreviewed model output permission to change files or make unsupported claims.
 
 ## What it is
 
-## What it is
-
 The application has primary workflows:
 
 - **Brief** gathers sources, checks claims against retrieved evidence, and exposes the checks and excerpts in the interface.
