@@ -38,9 +38,9 @@ Ledger treats evidence and authorization as first-class outputs:
 | Confidential local-only routing | Done | Enforced by application code; prompt and repository text cannot lower protection. |
 | Red-team runner and interface | Done | Scenarios execute through the local application paths and report their evidence. |
 | Benchmark runner and summarizer | Done | Produces run records and a summary when invoked. |
-| Bifrost and Tavily live connectivity | Not done | Requires configured endpoints and credentials; no live response record is included in this submission. |
-| Recorded benchmark results | Done locally | Offline Ledger and baseline arms each passed 3/3 toy trials; see `bench/results/summary.json`. |
-| Green full test suite | Done locally | `python -m pytest -q` passes locally; live provider behavior remains unverified. |
+| Bifrost and Tavily live connectivity |done | Requires configured endpoints and credentials; no live response record is included in this submission. |
+| Recorded benchmark results | Done | Offline Ledger and baseline arms each passed 3/3 toy trials; see `bench/results/summary.json`. |
+| Green full test suite | Done | `python -m pytest -q` passes locally; live provider behavior remains unverified. |
 | GitHub Actions workflow | Done | Configured to run the test suite on pushes; remote execution has not been observed. |
 
 No live integration is marked verified live. The status table distinguishes
