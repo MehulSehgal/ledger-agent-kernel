@@ -1,6 +1,14 @@
 # Ledger Agent Kernel
 
-Ledger is a local-first application for evidence-backed Brief research and policy-gated repository fixes. It makes model use, source checks, token metering, approvals, and run events visible through a FastAPI service and a vanilla JavaScript interface.
+Ledger is an evidence-first agent workspace for research and repository
+maintenance. It makes model use, source checks, token metering, policy
+decisions, approvals, and run events visible instead of hiding them behind a
+single opaque agent response.
+
+The project is designed for teams that need useful automation without giving
+unreviewed model output permission to change files or make unsupported claims.
+
+## What it is
 
 ## What it is
 
@@ -11,6 +19,16 @@ The application has primary workflows:
 
 The policy engine, rather than model output or repository content, decides whether an action is allowed, needs approval, or is denied. Confidential repositories are classified in code and routed only to configured local providers.
 
+## Why it matters
+
+Ledger treats evidence and authorization as first-class outputs:
+
+- claims retain source links, dates, quotes, and rejection reasons;
+- model calls retain tier, token usage, budget, and cost receipts;
+- repository changes are prepared in a sandbox and gated before write access;
+- confidential work is blocked from non-local providers by application policy;
+- run events make approvals, cancellations, failures, and outcomes inspectable.
+
 ## Status
 
 | Capability | Status | Notes |
@@ -20,12 +38,24 @@ The policy engine, rather than model output or repository content, decides wheth
 | Confidential local-only routing | Done | Enforced by application code; prompt and repository text cannot lower protection. |
 | Red-team runner and interface | Done | Scenarios execute through the local application paths and report their evidence. |
 | Benchmark runner and summarizer | Done | Produces run records and a summary when invoked. |
-| Bifrost and Tavily live connectivity | Not verified live | Requires configured endpoints and credentials; live service behavior has not been validated here. |
+| Bifrost and Tavily live connectivity | Not done | Requires configured endpoints and credentials; no live response record is included in this submission. |
 | Recorded benchmark results | Done locally | Offline Ledger and baseline arms each passed 3/3 toy trials; see `bench/results/summary.json`. |
 | Green full test suite | Done locally | `python -m pytest -q` passes locally; live provider behavior remains unverified. |
 | GitHub Actions workflow | Done | Configured to run the test suite on pushes; remote execution has not been observed. |
 
-No live integration is marked verified live. The status above distinguishes implemented paths from externally validated service behavior.
+No live integration is marked verified live. The status table distinguishes
+implemented paths from externally validated service behavior.
+
+## Final submission summary
+
+This submission demonstrates the complete local workflow: evidence-backed
+Brief generation, deterministic claim checks, sandboxed Fix planning, approval
+gates, confidential routing policy, red-team scenarios, benchmark reporting,
+and a deployable frontend/backend split. Offline mode is intentionally
+available so the product can be evaluated without provider credentials.
+
+Live provider behavior, external deployment health, and authenticated user
+identity are not claimed unless they are documented as verified evidence.
 
 ## Architecture
 
