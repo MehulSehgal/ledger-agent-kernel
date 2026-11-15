@@ -103,7 +103,25 @@ def support_check(claim, quote, meter):
     quote_words = _content_words(quote)
     if not claim_words:
         return False
-    return len(claim_words & quote_words) / len(claim_words) >= OFFLINE_SUPPORT_THRESHOLD
+    claim_numbers = numbers_in(claim)
+    quote_numbers = numbers_in(quote)
+    matched_numbers = sum(
+        any(math.isclose(number, quoted, rel_tol=1e-12, abs_tol=1e-12) for quoted in quote_numbers)
+        for number in claim_numbers
+    )
+    identifiers = [
+        token for token in re.findall(r"\b[A-Za-z0-9-]+\b", claim)
+        if (len(token) == 1 and token.isupper())
+        or (any(char.isdigit() for char in token) and not re.fullmatch(r"\d+[MKmk]", token))
+    ]
+    quote_identifiers = {token.lower() for token in re.findall(r"\b[A-Za-z0-9-]+\b", quote)}
+    if any(token.lower() not in quote_identifiers for token in identifiers):
+        return False
+    if claim_numbers and matched_numbers == len(claim_numbers):
+        return True
+    return (
+        len(claim_words & quote_words) + matched_numbers
+    ) / (len(claim_words) + len(claim_numbers)) >= OFFLINE_SUPPORT_THRESHOLD
 
 
 def verify(c, src, today, window=30, meter=None):
@@ -136,10 +154,5 @@ def verify(c, src, today, window=30, meter=None):
             return f"number {display} not in quote"
 
     if not support_check(c["claim"], quote, meter):
-        # Preserve the original kernel's accepted funding example for existing callers.
-        if not (
-            c["claim"] == "Acme raised $60 million"
-            and quote == "closed a $60 million Series C"
-        ):
-            return "claim not supported"
+        return "claim not supported"
     return None

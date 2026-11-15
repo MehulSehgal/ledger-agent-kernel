@@ -56,6 +56,20 @@ def test_verify_accepts_equivalent_number_formats():
     ) is None
 
 
+def test_verify_rejects_identifier_mismatch_and_accepts_paraphrase():
+    quote = "Acme closed a $60 million Series C round led by Northgate Capital."
+    assert gate.verify(
+        {"claim": "Acme closed a $60 million Series B round", "quote": quote},
+        source(quote),
+        TODAY,
+    ) == "claim not supported"
+    assert gate.verify(
+        {"claim": "Acme raised $60M in Series C funding", "quote": quote},
+        source(quote),
+        TODAY,
+    ) is None
+
+
 def test_verify_rejects_semantic_flip_and_short_quote():
     quote = "Acme closed a $60 million Series C round led by Northgate Capital."
     assert gate.verify(

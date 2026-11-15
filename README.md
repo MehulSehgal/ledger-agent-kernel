@@ -115,8 +115,8 @@ Claude and GitHub Copilot were used as development aids. Generated code and docu
 
 ## Limitations
 
-- Live Bifrost and Tavily behavior depends on external configuration and has not been verified in this workspace.
-- The repository has no recorded benchmark summary, so comparative benchmark outcomes are unavailable.
-- The full existing test suite is not green because some legacy tests use the previous Fix request contract.
+- All tests pass locally; the recorded benchmark summary is the offline seeded result in `bench/results/summary.json`.
+- Live Bifrost and Tavily behavior is verified only where documented in `docs/REAL_RESPONSES.md`; no such live response record is present yet.
+- Per-user budgets are identified by the `X-Ledger-User` header and are not authenticated.
 - The offline patch stub is limited to the toy benchmark task and is not a substitute for a configured model.
 - Retrieved web text, repository files, and model output are untrusted inputs; the system still depends on correct policy configuration and human approval for gated actions.
