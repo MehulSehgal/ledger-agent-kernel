@@ -141,10 +141,6 @@ python -m bench summarize
 
 The runner appends trial records to `bench/results/runs.jsonl`; summarization writes `bench/results/summary.json`. The benchmark endpoint and interface read that generated summary. No outcome, cost, or confidence interval should be quoted until the file exists and has been inspected.
 
-## AI-tool disclosure
-
-Claude and GitHub Copilot were used as development aids. Generated code and documentation require maintainer review; tool output is not treated as authorization or evidence.
-
 ## Limitations
 
 - All tests pass locally; the recorded benchmark summary is the offline seeded result in `bench/results/summary.json`.
