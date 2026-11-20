@@ -3,11 +3,18 @@ import {
   DEFAULT_TOKEN_BUDGET,
   DEMO_SCENARIOS,
   DemoScenario,
+  RoutingMode,
 } from "../config/demoScenarios";
 
 export function JumpStartDemo() {
   const [selectedId, setSelectedId] = useState<DemoScenario["id"]>("board-prep");
+  const [routingMode, setRoutingMode] = useState<RoutingMode>("auto");
   const [tokenBudget, setTokenBudget] = useState<number>(DEFAULT_TOKEN_BUDGET);
+
+  function handleSelectScenario(scenario: DemoScenario) {
+    setSelectedId(scenario.id);
+    setRoutingMode(scenario.routingMode);
+  }
 
   return (
     <section className="jumpstart-demo">
@@ -18,9 +25,10 @@ export function JumpStartDemo() {
         value={tokenBudget}
         onChange={(e) => setTokenBudget(Number(e.target.value) || DEFAULT_TOKEN_BUDGET)}
       />
+      <p>Active Route Mode: {routingMode}</p>
       <div>
         {DEMO_SCENARIOS.map((sc) => (
-          <button key={sc.id} type="button" onClick={() => setSelectedId(sc.id)}>
+          <button key={sc.id} type="button" onClick={() => handleSelectScenario(sc)}>
             {sc.label} ({selectedId === sc.id ? "active" : sc.subtitle})
           </button>
         ))}
