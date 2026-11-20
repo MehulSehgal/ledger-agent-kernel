@@ -14,8 +14,11 @@ link means running that repository's code on the server):
 """
 import os
 import re
+import subprocess
 import tempfile
 from pathlib import Path
+
+CLONE_TIMEOUT_SECONDS = 90
 
 _URL = re.compile(
     r"^https://github\.com/"
@@ -61,3 +64,42 @@ def _check_owner(owner):
 def clone_root():
     configured = os.getenv("LEDGER_CLONE_ROOT")
     return Path(configured) if configured else Path(tempfile.gettempdir()) / "ledger-clones"
+
+
+def _git_environment(home):
+    return {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(home),
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ALLOW_PROTOCOL": "https",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+    }
+
+
+def _git_clone(url, destination, home):
+    argv = [
+        "git", "clone", "--quiet", "--depth", "1", "--single-branch", "--no-tags",
+        "--config", "core.symlinks=false",
+        "--", url, str(destination),
+    ]
+    try:
+        result = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            env=_git_environment(home),
+            timeout=CLONE_TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError:
+        raise ValueError("git is not installed on this server") from None
+    except subprocess.TimeoutExpired:
+        raise ValueError(
+            f"git clone timed out after {CLONE_TIMEOUT_SECONDS} seconds"
+        ) from None
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        reason = detail[-1][:200] if detail else "unknown error"
+        raise ValueError(
+            f"could not clone the repository (it must exist and be public): {reason}"
+        )
