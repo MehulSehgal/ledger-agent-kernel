@@ -1,4 +1,5 @@
 """GitHub-link support for Fix: parsing, allow-list, safe clone, cleanup, e2e."""
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -6,7 +7,7 @@ import pytest
 
 import fixer
 import github_source
-from test_fixer import _ApprovingRun
+from test_fixer import _ApprovingRun, _failing_repo
 
 
 @pytest.fixture(autouse=True)
@@ -198,3 +199,48 @@ def test_bad_links_never_reach_the_filesystem_or_git(monkeypatch, tmp_path):
             fixer.run_fix(repo_path=link, run=_ApprovingRun())
     assert calls == []
     assert not (tmp_path / "clones").exists()
+
+
+# --- end to end ------------------------------------------------------------
+
+def test_fix_runs_on_a_github_link_and_returns_diff_without_writing(
+    monkeypatch, tmp_path
+):
+    source = tmp_path / "source"
+    source.mkdir()
+    _failing_repo(source)
+    fake_git(monkeypatch, populate=lambda d: shutil.copytree(source, d, dirs_exist_ok=True))
+    monkeypatch.setenv("LEDGER_ALLOWED_ROOTS", str(tmp_path / "unrelated"))
+    monkeypatch.setenv("LEDGER_OFFLINE_STUB", "0")
+    monkeypatch.setattr(fixer, "live_llm", lambda: True)
+    test_runs = []
+
+    def run_tests(*args, **kwargs):
+        test_runs.append(kwargs.get("test_selector"))
+        if len(test_runs) == 1:
+            return False, (
+                "test_calc.py:3: in test_calculate\n"
+                "FAILED test_calc.py::test_calculate - AssertionError\n"
+                "E assert 1 == 2\n"
+            )
+        return True, ""
+
+    monkeypatch.setattr(fixer, "_run_test_command", run_tests)
+    monkeypatch.setattr(
+        fixer, "chat",
+        lambda meter, label, tier, system, user: (
+            "<<<SEARCH\n    return internal_value\n===\n    return value + 1\n>>>REPLACE"
+        ),
+    )
+
+    result = fixer.run_fix(
+        repo_path="https://github.com/Owner/repo",
+        test_cmd=["python", "-m", "pytest"],
+        run=_ApprovingRun(),
+    )
+
+    assert result["status"] == "green"
+    assert "return value + 1" in result["diff"]
+    assert "https://github.com/Owner/repo" in result["message"]
+    assert "Nothing was pushed" in result["message"]
+    assert list((tmp_path / "clones").iterdir()) == []  # clone cleaned up
