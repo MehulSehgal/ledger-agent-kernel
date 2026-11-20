@@ -37,8 +37,8 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
   {
     id: "private-review",
     label: "Private review",
-    subtitle: "Confidential repository",
-    routingMode: "auto",
+    subtitle: "Confidential repository • Local-only",
+    routingMode: "local-only",
     classification: "confidential",
     tokenBudget: DEFAULT_TOKEN_BUDGET,
     prompt: "Audit the confidential repository diff for auth and egress regressions.",
