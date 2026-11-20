@@ -1049,8 +1049,8 @@ async function startRun(event) {
   }
   if (mode === "fix" && !params.repo_path) {
     addTimelineRow("form-error", {
-      title: "Missing repository path",
-      detail: "Enter a repository path that is inside LEDGER_ALLOWED_ROOTS.",
+      title: "Missing repository",
+      detail: "Enter a public GitHub link such as https://github.com/owner/repo, or a local path inside LEDGER_ALLOWED_ROOTS.",
       icon: "!",
       status: "fail",
     });
