@@ -60,7 +60,18 @@ ledger-agent-kernel/
 
    Add `LEDGER_CORS_ORIGINS` after the frontend is deployed.
 
-5. Verify the backend:
+5. To let Fix accept a pasted GitHub link on the hosted app, allow your own
+   account (the clone is public-only, shallow, and deleted after the run):
+
+   ```bash
+   fly secrets set LEDGER_GITHUB_OWNERS="your-github-username"
+   ```
+
+   The image installs `git` for this. Fix returns the verified diff; nothing is
+   pushed to GitHub. Fix executes the repository's own `python -m pytest`, so
+   list only owners you trust. Patch generation still needs Bifrost.
+
+6. Verify the backend:
 
    ```bash
    fly status
