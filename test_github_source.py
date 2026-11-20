@@ -101,3 +101,48 @@ def test_wildcard_allows_any_owner_only_when_explicit(monkeypatch):
     fake_git(monkeypatch)
     with github_source.cloned_repo("https://github.com/Anyone/repo") as (_, url):
         assert url == "https://github.com/Anyone/repo"
+
+
+# --- clone safety ----------------------------------------------------------
+
+def test_clone_command_is_hardened_and_leaks_no_secrets(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-secret")
+    monkeypatch.setenv("BIFROST_VK", "vk-secret")
+    calls = fake_git(monkeypatch)
+    with github_source.cloned_repo("https://github.com/Owner/repo.git"):
+        pass
+    argv, kwargs = calls[0]
+    assert argv[:2] == ["git", "clone"]
+    assert "--depth" in argv and argv[argv.index("--depth") + 1] == "1"
+    assert "--single-branch" in argv and "--no-tags" in argv
+    assert argv[argv.index("--") + 1] == "https://github.com/Owner/repo.git"
+    env = kwargs["env"]
+    assert env["GIT_ALLOW_PROTOCOL"] == "https"
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+    assert not any("secret" in value for value in env.values())
+    assert "TAVILY_API_KEY" not in env and "BIFROST_VK" not in env
+    assert kwargs["timeout"] == github_source.CLONE_TIMEOUT_SECONDS
+    assert kwargs.get("shell") is not True
+
+
+def test_failed_clone_reports_public_repo_hint(monkeypatch):
+    fake_git(monkeypatch, returncode=128, stderr="fatal: repository not found\n")
+    with pytest.raises(ValueError, match="exist and be public.*not found"):
+        with github_source.cloned_repo("https://github.com/Owner/private"):
+            pass
+
+
+def test_timeout_and_missing_git_have_clear_errors(monkeypatch):
+    def boom(exc):
+        def run(argv, **kwargs):
+            raise exc
+        monkeypatch.setattr(github_source.subprocess, "run", run)
+
+    boom(subprocess.TimeoutExpired("git", 90))
+    with pytest.raises(ValueError, match="timed out"):
+        with github_source.cloned_repo("https://github.com/Owner/repo"):
+            pass
+    boom(FileNotFoundError())
+    with pytest.raises(ValueError, match="git is not installed"):
+        with github_source.cloned_repo("https://github.com/Owner/repo"):
+            pass
