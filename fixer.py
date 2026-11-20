@@ -995,6 +995,15 @@ def _run_fix_inner(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
                 engine,
             )
 
+        if github_url:
+            return finish(
+                "green",
+                final_changes,
+                f"Verified in a temporary copy of {github_url}. Nothing was pushed "
+                "to GitHub; copy the diff below to apply it yourself.",
+                engine,
+            )
+
         diff = "".join(item["diff"] for item in final_changes.values())
         write_action = Action(
             "WRITE",
