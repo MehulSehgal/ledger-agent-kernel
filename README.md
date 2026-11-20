@@ -113,6 +113,8 @@ Unset variables use the defaults documented by the code where applicable. Secret
 | `LOCAL_PROVIDERS` | Provider allowlist used by the confidential egress guard. |
 | `TAVILY_API_KEY` | Credential for Tavily search and extraction. |
 | `LEDGER_TAVILY_CREDIT_CAP` | Optional positive integer. Stops local Tavily calls when this many estimated credits have been spent in the current process. Tavily's usage endpoint, called by `smoke.py`, is the authoritative balance; see `docs/LINKS.md` for the credit rules. |
+| `LEDGER_GITHUB_OWNERS` | Comma-separated GitHub users or organisations whose public repositories Fix may clone from a pasted link. Unset disables GitHub links; an asterisk allows any owner, which runs strangers' tests on your server, so avoid it on a public deployment. |
+| `LEDGER_CLONE_ROOT` | Optional scratch folder for temporary clones. Clones are deleted when the run ends. |
 | `LEDGER_ALLOWED_ROOTS` | Path-separated roots within which Fix may accept repositories. |
 | `LEDGER_USER_CAP` | Positive per-user token cap. |
 | `LEDGER_BUDGET_FILE` | Optional path for the persisted per-user budget ledger. `LEDGER_USAGE_FILE` remains a compatibility fallback. |
