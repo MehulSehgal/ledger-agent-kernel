@@ -6,6 +6,7 @@ import pytest
 
 import fixer
 import github_source
+from test_fixer import _ApprovingRun
 
 
 @pytest.fixture(autouse=True)
@@ -188,3 +189,12 @@ def test_managed_clone_registry_does_not_widen_allowed_roots(monkeypatch, tmp_pa
         fixer.resolve_repo_path(path)  # deleted clone is no longer accepted
     with pytest.raises(ValueError, match="LEDGER_ALLOWED_ROOTS"):
         fixer.resolve_repo_path(elsewhere)
+
+
+def test_bad_links_never_reach_the_filesystem_or_git(monkeypatch, tmp_path):
+    calls = fake_git(monkeypatch)
+    for link in ("https://evil.example/Owner/repo", "https://github.com/Owner/repo/tree/x"):
+        with pytest.raises(ValueError):
+            fixer.run_fix(repo_path=link, run=_ApprovingRun())
+    assert calls == []
+    assert not (tmp_path / "clones").exists()
