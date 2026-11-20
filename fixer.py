@@ -671,6 +671,21 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
              user_id=None, confidential=False, baseline=False, chat_fn=None,
              live_fn=None, test_runner=None, no_triage=False, no_tavily=False,
              failing_test=None, legacy_offline=False, legacy_contract=False):
+    options = dict(
+        task=task, test_cmd=test_cmd, cap=cap, run=run, user_id=user_id,
+        confidential=confidential, baseline=baseline, chat_fn=chat_fn,
+        live_fn=live_fn, test_runner=test_runner, no_triage=no_triage,
+        no_tavily=no_tavily, failing_test=failing_test,
+        legacy_offline=legacy_offline, legacy_contract=legacy_contract,
+    )
+    return _run_fix_inner(repo_path=repo_path, **options)
+
+
+def _run_fix_inner(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
+                   user_id=None, confidential=False, baseline=False, chat_fn=None,
+                   live_fn=None, test_runner=None, no_triage=False,
+                   no_tavily=False, failing_test=None, legacy_offline=False,
+                   legacy_contract=False, github_url=None):
     run = run or NULL_RUN
     run.check_cancelled()
     if repo_path is None:
