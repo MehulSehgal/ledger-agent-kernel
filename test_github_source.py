@@ -146,3 +146,27 @@ def test_timeout_and_missing_git_have_clear_errors(monkeypatch):
     with pytest.raises(ValueError, match="git is not installed"):
         with github_source.cloned_repo("https://github.com/Owner/repo"):
             pass
+
+
+def test_oversized_clone_is_rejected_and_removed(monkeypatch, tmp_path):
+    monkeypatch.setattr(github_source, "MAX_CLONE_BYTES", 10)
+    fake_git(monkeypatch, populate=lambda d: (d / "big.bin").write_bytes(b"x" * 100))
+    with pytest.raises(ValueError, match="200 MB"):
+        with github_source.cloned_repo("https://github.com/Owner/repo"):
+            pass
+    assert list((tmp_path / "clones").iterdir()) == []
+
+
+def test_clone_is_deleted_after_success_and_after_errors(monkeypatch, tmp_path):
+    fake_git(monkeypatch, populate=lambda d: (d / "a.py").write_text("x"))
+    with github_source.cloned_repo("https://github.com/Owner/repo") as (path, _):
+        assert path.is_dir() and github_source.is_managed_clone(path)
+        assert github_source.is_managed_clone(path / "a.py")
+    assert not path.exists() and not github_source.is_managed_clone(path)
+    assert list((tmp_path / "clones").iterdir()) == []
+
+    with pytest.raises(RuntimeError):
+        with github_source.cloned_repo("https://github.com/Owner/repo") as (path, _):
+            raise RuntimeError("boom")
+    assert not path.exists()
+    assert list((tmp_path / "clones").iterdir()) == []
