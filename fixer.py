@@ -13,6 +13,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+import github_source
 from kernel import BudgetExhausted, Meter, chat, live_llm, tavily_extract, tavily_news, tok
 from policy import Action, PolicyEngine
 from runs import NULL_RUN
@@ -39,6 +40,12 @@ class RepoSizeLimitError(ValueError):
 
 
 def resolve_repo_path(repo_path):
+    try:
+        requested = Path(repo_path).expanduser().resolve(strict=True)
+    except OSError:
+        requested = None
+    if requested is not None and github_source.is_managed_clone(requested):
+        return requested
     configured = os.getenv("LEDGER_ALLOWED_ROOTS", "")
     roots = [
         Path(item.strip()).expanduser().resolve(strict=True)
