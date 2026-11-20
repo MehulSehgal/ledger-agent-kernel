@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import fixer
 import github_source
 
 
@@ -170,3 +171,20 @@ def test_clone_is_deleted_after_success_and_after_errors(monkeypatch, tmp_path):
             raise RuntimeError("boom")
     assert not path.exists()
     assert list((tmp_path / "clones").iterdir()) == []
+
+
+def test_managed_clone_registry_does_not_widen_allowed_roots(monkeypatch, tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("LEDGER_ALLOWED_ROOTS", str(allowed))
+    with pytest.raises(ValueError, match="LEDGER_ALLOWED_ROOTS"):
+        fixer.resolve_repo_path(elsewhere)
+    fake_git(monkeypatch)
+    with github_source.cloned_repo("https://github.com/Owner/repo") as (path, _):
+        assert fixer.resolve_repo_path(path) == path
+    with pytest.raises(FileNotFoundError):
+        fixer.resolve_repo_path(path)  # deleted clone is no longer accepted
+    with pytest.raises(ValueError, match="LEDGER_ALLOWED_ROOTS"):
+        fixer.resolve_repo_path(elsewhere)
