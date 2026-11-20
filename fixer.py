@@ -678,6 +678,11 @@ def _run_fix(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         no_tavily=no_tavily, failing_test=failing_test,
         legacy_offline=legacy_offline, legacy_contract=legacy_contract,
     )
+    if isinstance(repo_path, str) and github_source.looks_like_url(repo_path):
+        with github_source.cloned_repo(repo_path) as (clone_dir, canonical_url):
+            return _run_fix_inner(
+                repo_path=clone_dir, github_url=canonical_url, **options
+            )
     return _run_fix_inner(repo_path=repo_path, **options)
 
 
