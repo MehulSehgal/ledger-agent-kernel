@@ -14,17 +14,25 @@ link means running that repository's code on the server):
 """
 import os
 import re
+import shutil
 import subprocess
 import tempfile
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 CLONE_TIMEOUT_SECONDS = 90
+MAX_CLONE_BYTES = 200 * 1024 * 1024
 
 _URL = re.compile(
     r"^https://github\.com/"
     r"(?P<owner>[A-Za-z0-9][A-Za-z0-9-]{0,38})/"
     r"(?P<repo>[A-Za-z0-9._-]{1,100}?)(?:\.git)?/?$"
 )
+
+_ACTIVE = set()
+_ACTIVE_LOCK = threading.Lock()
+
 
 def looks_like_url(value):
     if not isinstance(value, str):
@@ -66,6 +74,16 @@ def clone_root():
     return Path(configured) if configured else Path(tempfile.gettempdir()) / "ledger-clones"
 
 
+def is_managed_clone(path):
+    """True only for a folder this module created and has not yet deleted."""
+    try:
+        resolved = Path(path).resolve()
+    except OSError:
+        return False
+    with _ACTIVE_LOCK:
+        return any(resolved == active or active in resolved.parents for active in _ACTIVE)
+
+
 def _git_environment(home):
     return {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -103,3 +121,41 @@ def _git_clone(url, destination, home):
         raise ValueError(
             f"could not clone the repository (it must exist and be public): {reason}"
         )
+
+
+def _directory_bytes(path):
+    total = 0
+    for current, _dirs, names in os.walk(path, followlinks=False):
+        for name in names:
+            try:
+                total += (Path(current) / name).lstat().st_size
+            except OSError:
+                continue
+            if total > MAX_CLONE_BYTES:
+                return total
+    return total
+
+
+@contextmanager
+def cloned_repo(link):
+    """Yield ``(path, canonical_url)`` for a fresh clone; delete it on exit."""
+    owner, repo = parse_github_url(link)
+    _check_owner(owner)
+    canonical = f"https://github.com/{owner}/{repo}"
+    base = clone_root()
+    base.mkdir(parents=True, exist_ok=True)
+    workdir = Path(tempfile.mkdtemp(prefix="clone-", dir=base)).resolve()
+    destination = workdir / "repo"
+    with _ACTIVE_LOCK:
+        _ACTIVE.add(destination)
+    try:
+        _git_clone(canonical + ".git", destination, workdir)
+        if not destination.is_dir():
+            raise ValueError("clone produced no repository")
+        if _directory_bytes(destination) > MAX_CLONE_BYTES:
+            raise ValueError("repository is larger than the 200 MB clone limit")
+        yield destination, canonical
+    finally:
+        with _ACTIVE_LOCK:
+            _ACTIVE.discard(destination)
+        shutil.rmtree(workdir, ignore_errors=True)
