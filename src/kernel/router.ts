@@ -16,13 +16,18 @@ export interface RouteDecision {
 }
 
 export function resolveRoute(req: RouteRequest): RouteDecision {
-  if (req.routingMode === "local-only") {
+  const isLocalOnlyMode = req.routingMode === "local-only";
+  const isConfidential = req.classification === "confidential";
+
+  if (isLocalOnlyMode || isConfidential) {
     return {
       target: "local",
       provider: req.localEndpoint || "local://ledger-ollama-runtime",
       enforcedLocalOnly: true,
       blockedCloudFallback: true,
-      reason: "Explicit local-only routing mode enforced",
+      reason: isConfidential
+        ? "Confidential classification locked execution to local runtime"
+        : "Explicit local-only routing mode enforced",
     };
   }
 
@@ -31,6 +36,14 @@ export function resolveRoute(req: RouteRequest): RouteDecision {
     provider: req.cloudEndpoint || "cloud://frontier-router",
     enforcedLocalOnly: false,
     blockedCloudFallback: false,
-    reason: "Standard auto/cloud routing permitted",
+    reason: "Standard auto/cloud routing permitted for non-confidential payload",
   };
+}
+
+export function assertRouteSafety(decision: RouteDecision): void {
+  if (decision.enforcedLocalOnly && !decision.provider.startsWith("local://")) {
+    throw new Error(
+      `Security violation: local-only route resolved to non-local provider "${decision.provider}"`
+    );
+  }
 }
