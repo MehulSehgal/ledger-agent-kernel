@@ -35,6 +35,7 @@ export function JumpStartDemo() {
         tokenBudget,
         (liveTick) => setReceipt({ ...liveTick })
       );
+      setReceipt({ ...result.receipt });
       setOutput(result);
     } finally {
       setIsRunning(false);
