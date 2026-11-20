@@ -66,6 +66,8 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
     routingMode: "local-only",
     classification: "confidential",
     tokenBudget: DEFAULT_TOKEN_BUDGET,
+    repositoryName: "confidential/ledger-core-auth",
     prompt: "Audit the confidential repository diff for auth and egress regressions.",
+    repositoryDiff: CONFIDENTIAL_REPO_DIFF,
   },
 ];
