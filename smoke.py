@@ -113,6 +113,13 @@ def main():
     print("Tavily extract (raw JSON):")
     _print_json(extract_json)
 
+    usage_response = httpx.get(
+        "https://api.tavily.com/usage", headers=tavily_headers, timeout=30
+    )
+    usage_json = _response_json(usage_response, "Tavily usage")
+    print("Tavily usage (raw JSON; compare key/account usage with your plan limit):")
+    _print_json(usage_json)
+
 
 if __name__ == "__main__":
     try:

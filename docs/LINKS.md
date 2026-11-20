@@ -9,3 +9,5 @@
 ## Tavily
 
 - [Extract API](https://docs.tavily.com/api-reference/endpoint/extract)
+- [API credits](https://docs.tavily.com/documentation/api-credits)
+- [Usage endpoint](https://docs.tavily.com/documentation/api-reference/endpoint/usage)

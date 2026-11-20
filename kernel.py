@@ -398,19 +398,65 @@ def in_window(d, today, window=30):
     try: return today - timedelta(window) <= date.fromisoformat(d) <= today
     except Exception: return False
 
+# --- Tavily credit accounting -------------------------------------------------
+# Docs (docs.tavily.com/documentation/api-credits): basic search = 1 credit;
+# basic extract = 1 credit per 5 successful URLs; failed extractions are free.
+# This counter is per-process and only an estimate. The authoritative balance
+# is Tavily's GET /usage (see smoke.py). Set LEDGER_TAVILY_CREDIT_CAP to stop
+# local spending before the cap is exceeded; unset means no local cap.
+_TAVILY_CREDITS_SPENT = 0
+_TAVILY_CREDITS_LOCK = threading.Lock()
+
+def tavily_credit_cap():
+    raw = os.getenv("LEDGER_TAVILY_CREDIT_CAP")
+    if not raw:
+        return None
+    try:
+        cap = int(raw)
+    except ValueError:
+        raise ValueError("LEDGER_TAVILY_CREDIT_CAP must be a positive integer") from None
+    if cap <= 0:
+        raise ValueError("LEDGER_TAVILY_CREDIT_CAP must be a positive integer")
+    return cap
+
+def tavily_credits_spent():
+    with _TAVILY_CREDITS_LOCK:
+        return _TAVILY_CREDITS_SPENT
+
+def _tavily_reserve_check(credits):
+    cap = tavily_credit_cap()
+    if cap is None:
+        return
+    with _TAVILY_CREDITS_LOCK:
+        if _TAVILY_CREDITS_SPENT + credits > cap:
+            raise WebSearchError(
+                f"Tavily credit cap reached ({_TAVILY_CREDITS_SPENT}/{cap} used locally)"
+            )
+
+def _tavily_charge(credits):
+    global _TAVILY_CREDITS_SPENT
+    with _TAVILY_CREDITS_LOCK:
+        _TAVILY_CREDITS_SPENT += credits
+
+def _extract_credits(successful_urls):
+    return -(-successful_urls // 5)  # ceil(n / 5)
+
 def tavily_news(query, today, window=30):
+    _tavily_reserve_check(1)
     try:
         response = _web_post(
             "https://api.tavily.com/search",
             timeout=30,
             headers={"Authorization": "Bearer " + _web_api_key()},
             json={"query": query, "topic": "news", "max_results": 5,
+                  "search_depth": "basic",
                   "start_date": (today - timedelta(window)).isoformat(), "end_date": today.isoformat()},
         )
         response.raise_for_status()
         results = response.json().get("results", [])
         if not isinstance(results, list):
             raise ValueError("results must be a list")
+        _tavily_charge(1)
         return [
             {"url": x["url"], "title": x["title"], "date": to_iso(x.get("published_date")),
              "text": x.get("content", "")}
@@ -429,6 +475,7 @@ def tavily_extract(urls, query, chunks=3):
         batch = urls[offset:offset + 20]
         if not batch:
             continue
+        _tavily_reserve_check(_extract_credits(len(batch)))
         try:
             response = _web_post(
                 "https://api.tavily.com/extract",
@@ -463,6 +510,7 @@ def tavily_extract(urls, query, chunks=3):
                 failed.append(item["url"])
                 returned.add(item["url"])
             failed.extend(url for url in batch if url not in returned)
+            _tavily_charge(_extract_credits(len(results)))
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise WebSearchError(f"Tavily extract request failed: {exc}") from exc
     return texts, list(dict.fromkeys(failed))

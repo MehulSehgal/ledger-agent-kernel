@@ -112,6 +112,7 @@ Unset variables use the defaults documented by the code where applicable. Secret
 | `LEDGER_LOCAL_CHAIN` | Ordered model chain used for confidential requests. |
 | `LOCAL_PROVIDERS` | Provider allowlist used by the confidential egress guard. |
 | `TAVILY_API_KEY` | Credential for Tavily search and extraction. |
+| `LEDGER_TAVILY_CREDIT_CAP` | Optional positive integer. Stops local Tavily calls when this many estimated credits have been spent in the current process. Tavily's usage endpoint, called by `smoke.py`, is the authoritative balance; see `docs/LINKS.md` for the credit rules. |
 | `LEDGER_ALLOWED_ROOTS` | Path-separated roots within which Fix may accept repositories. |
 | `LEDGER_USER_CAP` | Positive per-user token cap. |
 | `LEDGER_BUDGET_FILE` | Optional path for the persisted per-user budget ledger. `LEDGER_USAGE_FILE` remains a compatibility fallback. |
