@@ -120,6 +120,27 @@ def _local_chain(run):
     return models, providers
 
 
+def local_routing_configured():
+    """True when confidential (local-only) routing has everything it needs."""
+    chain = [
+        item.strip()
+        for item in os.getenv("LEDGER_LOCAL_CHAIN", "").split(",")
+        if item.strip()
+    ]
+    providers = {
+        item.strip().casefold()
+        for item in os.getenv("LOCAL_PROVIDERS", "").split(",")
+        if item.strip()
+    }
+    return bool(
+        chain
+        and providers
+        and all(_provider(model) in providers for model in chain)
+        and os.getenv("BIFROST_URL")
+        and os.getenv("BIFROST_VK_LOCAL")
+    )
+
+
 def _api_key(user_id, confidential=False):
     if confidential:
         return os.getenv("BIFROST_VK_LOCAL")

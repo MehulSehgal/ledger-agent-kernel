@@ -10,11 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from kernel import BudgetExhausted, live_llm, live_web
+from kernel import PRICE_VERIFIED, BudgetExhausted, live_llm, live_web
 from modes import run_brief
 from fixer import run_baseline, run_fix
 from runs import Run, RunCancelled, RunRegistry
-from router import configure_chaos
+from router import configure_chaos, local_routing_configured
 from redteam import run_redteam
 
 app = FastAPI(title="Ledger")
@@ -115,6 +115,8 @@ def status():
         "bifrost": bifrost,
         "tavily": tavily,
         "mode": "live" if bifrost or tavily else "offline",
+        "local_models": local_routing_configured(),
+        "prices_verified": PRICE_VERIFIED,
         "models": {
             "cheap": os.getenv("LEDGER_CHEAP", "openai/gpt-4o-mini"),
             "strong": os.getenv("LEDGER_STRONG", "anthropic/claude-sonnet-4-5"),
