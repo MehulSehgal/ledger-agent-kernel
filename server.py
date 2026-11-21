@@ -32,10 +32,13 @@ if cors_origins:
         allow_headers=["*"],
     )
 
+DEFAULT_TOKEN_BUDGET = 100
+
+
 class BriefIn(BaseModel):
     company: str = Field("Acme Robotics", min_length=1, max_length=200)
     meeting: str = Field("Thu 3pm", min_length=1, max_length=200)
-    cap: int = Field(12000, ge=100, le=1_000_000)
+    cap: int = Field(DEFAULT_TOKEN_BUDGET, ge=100, le=1_000_000)
     meeting_at: datetime | None = None
     confidential: bool = False
 
@@ -52,7 +55,7 @@ class FixIn(BaseModel):
     task: str | None = Field(None, max_length=4000)
     test_cmd: list[str] = Field(default_factory=lambda: ["python", "-m", "pytest"])
     failing_test: str | None = None
-    cap: int = Field(6000, ge=100, le=1_000_000)
+    cap: int = Field(DEFAULT_TOKEN_BUDGET, ge=100, le=1_000_000)
     confidential: bool = False
     baseline: bool = False
     no_triage: bool = False
