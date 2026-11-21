@@ -277,6 +277,8 @@ class Meter:
         self.run.emit("budget", {
             "used": used,
             "cap": cap,
+            "run_used": self.used(),
+            "run_cap": self.cap,
             "pct": pct,
             "state": state,
             "user": self.user_id or "default",
