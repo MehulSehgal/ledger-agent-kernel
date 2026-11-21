@@ -85,8 +85,10 @@ def build_record(arm, task, run_number, result, events, seconds):
     return {
         "arm": arm,
         "task_id": task["id"],
+        "task_source": task.get("source"),
         "run": run_number,
         "pass": result.get("status") == "green",
+        "engine": result.get("engine"),
         "tokens_in": _known_sum([item.get("tokens_in") for item in token_events]),
         "tokens_out": _known_sum([item.get("tokens_out") for item in token_events]),
         "tokens_cached": _known_sum([item.get("tokens_cached") for item in token_events]),
@@ -146,6 +148,7 @@ def _bootstrap_mean(values, seed, samples):
 def summarize_records(records, bootstrap_samples=2000):
     if isinstance(bootstrap_samples, bool) or not isinstance(bootstrap_samples, int) or bootstrap_samples < 1:
         raise ValueError("bootstrap_samples must be a positive integer")
+    records = list(records)
     grouped = {}
     for record in records:
         arm = record.get("arm")
@@ -155,6 +158,38 @@ def summarize_records(records, bootstrap_samples=2000):
 
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "metadata": {
+            "task_count": len({
+                record["task_id"]
+                for record in records
+                if isinstance(record.get("task_id"), str) and record["task_id"]
+            }),
+            "run_count": len(records),
+            "provenance_complete": all(
+                record.get("task_source") in ("real", "seeded")
+                for record in records
+            ),
+            "models": sorted({
+                model
+                for record in records
+                for model in (
+                    record.get("models_used")
+                    if isinstance(record.get("models_used"), list)
+                    else []
+                )
+                if isinstance(model, str) and model
+            }),
+            "task_sources": sorted({
+                record["task_source"]
+                for record in records
+                if isinstance(record.get("task_source"), str) and record["task_source"]
+            }),
+            "engines": sorted({
+                record["engine"]
+                for record in records
+                if isinstance(record.get("engine"), str) and record["engine"]
+            }),
+        },
         "arms": {},
     }
     for arm, rows in sorted(grouped.items()):

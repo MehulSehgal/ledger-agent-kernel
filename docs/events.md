@@ -83,11 +83,15 @@ results:
 ```
 
 Each scenario's `evidence` contains run events using the event envelope above.
-The red-team screen displays every scenario, its checks, and its evidence.
+The red-team screen displays four scenario cards with pass/fail rings, check
+chips, plain-language attack descriptions, and collapsed evidence.
 `GET /api/bench/summary` serves the generated benchmark summary or returns
-404 when no summary exists. The benchmark screen displays every recorded arm,
-cost per verified outcome, and pass rate with its 95% Wilson interval; arms
-below the baseline remain visible and are marked in red with their delta.
+404 when no summary exists. Its `metadata` includes `task_count`, `run_count`,
+`provenance_complete`, the recorded `models`, `task_sources`, and `engines`.
+The benchmark screen marks missing/incomplete provenance, seeded tasks, and
+offline-stub runs as unmeasured and hides their comparison charts. A measured
+summary displays pass rates with 95% Wilson intervals, per-arm token means, a
+task/run/model/date caption, and CSV export.
 
 `result.confidential` is true when the run was confidential, whether the
 request asked for it or the repository's own policy did. Confidential runs

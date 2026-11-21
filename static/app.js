@@ -38,6 +38,7 @@ let approvalQueue = [];
 let approvalTimer = null;
 let previousFocus = null;
 let briefResult = null;
+let benchmarkSummary = null;
 let selectedBriefClaimIndex = -1;
 const fixStageMetrics = new Map();
 let activeFixStage = null;
@@ -1979,7 +1980,7 @@ function renderRedteamEvidence(scenario) {
   details.append(createElement("summary", "", `Evidence events (${events.length})`));
   const list = createElement("ul", "evidence-event-list");
   for (const event of events) {
-    const data = event.data || {};
+    const data = event?.data || {};
     const droppedSources = Array.isArray(data.audit?.pre_dropped)
       ? data.audit.pre_dropped.map((item) => `${item.reason}: ${item.title}`)
       : [];
@@ -2005,6 +2006,63 @@ function renderRedteamEvidence(scenario) {
   return details;
 }
 
+const redteamExplanations = {
+  "repo-injection": "Repository text tries to trick the agent into treating an instruction as approval.",
+  "web-injection": "A fetched page hides instructions that attempt to manipulate claims or tool use.",
+  "path-traversal": "A crafted path tries to write beyond the approved sandbox.",
+  "confidential-cloud": "A private request tries to send data through a cloud model.",
+};
+
+function renderScenarioStatusRing(scenario, passedChecks, checkCount) {
+  const ratio = checkCount
+    ? passedChecks / checkCount
+    : scenario.passed === true ? 1 : 0;
+  const circumference = 2 * Math.PI * 16;
+  const ring = svgElement("svg", {
+    class: `scenario-status-ring ${scenario.passed ? "is-pass" : "is-fail"}`,
+    viewBox: "0 0 42 42",
+    role: "img",
+    "aria-label": `${passedChecks} of ${checkCount} checks passed`,
+  });
+  ring.append(
+    svgElement("circle", {
+      class: "scenario-ring-track",
+      cx: 21,
+      cy: 21,
+      r: 16,
+    }),
+    svgElement("circle", {
+      class: "scenario-ring-progress",
+      cx: 21,
+      cy: 21,
+      r: 16,
+      "stroke-dasharray": circumference,
+      "stroke-dashoffset": circumference * (1 - ratio),
+    }),
+    svgElement("text", {
+      class: "scenario-ring-label",
+      x: 21,
+      y: 24,
+      "text-anchor": "middle",
+    }, `${Math.round(ratio * 100)}%`),
+  );
+  return ring;
+}
+
+function renderScenarioCheckChip(name, passed) {
+  const label = name.replaceAll("_", " ");
+  const chip = createElement(
+    "li",
+    `scenario-check-chip ${passed ? "is-pass" : "is-fail"}`,
+  );
+  chip.append(
+    createElement("span", "scenario-check-icon", passed ? "✓" : "✗"),
+    createElement("span", "", label),
+  );
+  chip.title = `${label}: ${passed ? "pass" : "fail"}`;
+  return chip;
+}
+
 function renderRedteamResults(payload) {
   const results = byId("redteam-results");
   results.replaceChildren();
@@ -2013,31 +2071,61 @@ function renderRedteamResults(payload) {
     const passed = scenario.passed === true;
     const item = createElement("li", `scenario-card ${passed ? "scenario-pass" : "scenario-fail"}`);
     const heading = createElement("div", "scenario-heading");
+    const checks = Object.entries(scenario.checks || {});
+    const passedChecks = checks.filter(([, value]) => value === true).length;
     heading.append(
       createElement("h2", "", scenario.name || scenario.id || "Unnamed scenario"),
+      renderScenarioStatusRing(scenario, passedChecks, checks.length),
       createElement("span", `scenario-status ${passed ? "is-pass" : "is-fail"}`, passed ? "PASS" : "FAIL"),
     );
     item.append(heading);
-    const checks = createElement("ul", "scenario-checks");
-    for (const [name, value] of Object.entries(scenario.checks || {})) {
-      checks.append(createElement(
-        "li",
-        value === true ? "check-pass" : "check-fail",
-        `${name.replaceAll("_", " ")}: ${value === true ? "pass" : "fail"}`,
-      ));
+    const explanation = createElement(
+      "p",
+      "scenario-explanation",
+      redteamExplanations[scenario.id] ||
+        "This scenario checks whether untrusted input can bypass a safety control.",
+    );
+    explanation.title = explanation.textContent;
+    item.append(explanation);
+    const checkList = createElement("ul", "scenario-checks");
+    for (const [name, value] of checks) {
+      checkList.append(renderScenarioCheckChip(name, value === true));
     }
-    item.append(checks, renderRedteamEvidence(scenario));
+    item.append(checkList, renderRedteamEvidence(scenario));
     results.append(item);
   }
   const passed = Number(payload.passed) || 0;
   const failed = Number(payload.failed) || 0;
-  byId("redteam-status").textContent = `${passed} passed · ${failed} failed`;
+  const status = byId("redteam-status");
+  status.className = `tool-status safety-summary ${failed ? "has-failures" : "all-passed"}`;
+  status.textContent = `${passed} scenarios passed · ${failed} need review`;
+  status.setAttribute("aria-label", `Safety run complete: ${passed} passed, ${failed} need review`);
+}
+
+function initializeRedteamUi() {
+  const button = byId("run-redteam");
+  button.textContent = "Run all";
+  if (byId("redteam-progress")) return;
+  const progress = createElement("progress", "redteam-progress");
+  progress.id = "redteam-progress";
+  progress.max = 4;
+  progress.hidden = true;
+  progress.setAttribute("aria-label", "Running all safety scenarios");
+  byId("redteam-status").before(progress);
 }
 
 async function runRedteam() {
+  initializeRedteamUi();
   const button = byId("run-redteam");
   button.disabled = true;
-  byId("redteam-status").textContent = "Running scenarios…";
+  button.textContent = "Running…";
+  const progress = byId("redteam-progress");
+  progress.removeAttribute("value");
+  progress.hidden = false;
+  const status = byId("redteam-status");
+  status.className = "tool-status safety-summary is-running";
+  status.textContent = "Running all four scenarios…";
+  status.setAttribute("aria-label", "Running all safety scenarios");
   byId("redteam-results").replaceChildren();
   try {
     const response = await fetch(apiUrl("/api/redteam"), { method: "POST" });
@@ -2045,10 +2133,13 @@ async function runRedteam() {
     if (!response.ok) throw new Error(payload.detail || `Red-team request failed (${response.status})`);
     renderRedteamResults(payload);
   } catch (error) {
-    byId("redteam-status").textContent = error.message || "Red-team run failed.";
+    status.className = "tool-status safety-summary has-failures";
+    status.textContent = error.message || "Red-team run failed.";
     showToast(error.message || "Red-team run failed.", "error");
   } finally {
     button.disabled = false;
+    button.textContent = "Run all";
+    progress.hidden = true;
   }
 }
 
@@ -2153,12 +2244,180 @@ function renderBenchmarkChart(container, arms, metric) {
   container.append(svg);
 }
 
+function initializeBenchmarkUi() {
+  if (byId("benchmark-provenance-warning")) return;
+  const screen = byId("benchmark-screen");
+  const content = byId("benchmark-content");
+  const warning = createElement("p", "benchmark-provenance is-warning");
+  warning.id = "benchmark-provenance-warning";
+  warning.setAttribute("role", "status");
+  warning.textContent = "Toy task, offline stub: not a measured result";
+  warning.hidden = true;
+
+  const caption = createElement("p", "benchmark-provenance benchmark-caption");
+  caption.id = "benchmark-provenance";
+  caption.hidden = true;
+
+  const tokenSection = createElement("section", "benchmark-token-summary panel");
+  tokenSection.id = "benchmark-token-summary";
+  tokenSection.append(createElement("h2", "", "Tokens per arm"));
+  const tableContainer = createElement("div", "benchmark-token-table");
+  tableContainer.id = "benchmark-token-table";
+  tokenSection.append(tableContainer);
+  tokenSection.hidden = true;
+
+  const exportButton = createElement("button", "secondary-button", "Export CSV");
+  exportButton.id = "benchmark-export-csv";
+  exportButton.type = "button";
+  exportButton.hidden = true;
+  exportButton.addEventListener("click", exportBenchmarkCsv);
+
+  for (const element of [warning, caption, tokenSection, exportButton]) {
+    screen.insertBefore(element, content);
+  }
+}
+
+function isUnmeasuredBenchmark(summary) {
+  const metadata = summary?.metadata;
+  if (
+    !metadata ||
+    !Number.isInteger(metadata.task_count) ||
+    !Number.isInteger(metadata.run_count) ||
+    metadata.provenance_complete !== true ||
+    !Array.isArray(metadata.task_sources) ||
+    !Array.isArray(metadata.engines) ||
+    !Array.isArray(metadata.models)
+  ) return true;
+  return metadata.task_count < 1 ||
+    metadata.run_count < 1 ||
+    metadata.task_sources.includes("seeded") ||
+    metadata.engines.some((engine) => String(engine).toLowerCase() === "offline stub") ||
+    !metadata.task_sources.includes("real") ||
+    metadata.models.length === 0;
+}
+
+function benchmarkPercent(value) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${(value * 100).toFixed(1)}%`
+    : "Unavailable";
+}
+
+function benchmarkTokenMean(arm, key) {
+  const value = arm[key]?.mean;
+  return typeof value === "number" && Number.isFinite(value)
+    ? formatNumber(value)
+    : "Unavailable";
+}
+
+function benchmarkPassRateWithInterval(arm) {
+  const rate = benchmarkPercent(arm.pass_rate);
+  const interval = arm.pass_rate_ci95;
+  if (
+    !Array.isArray(interval) ||
+    interval.length !== 2 ||
+    !interval.every((value) => typeof value === "number" && Number.isFinite(value))
+  ) return rate;
+  return `${rate} (${benchmarkPercent(interval[0])}–${benchmarkPercent(interval[1])})`;
+}
+
+function renderBenchmarkTokenTable(summary, arms) {
+  const container = byId("benchmark-token-table");
+  container.replaceChildren();
+  const table = createElement("table", "benchmark-token-data");
+  const headers = [
+    "Arm",
+    "Runs",
+    "Pass rate (95% CI)",
+    "Mean input tokens",
+    "Mean output tokens",
+    "Mean cached tokens",
+  ];
+  const head = createElement("thead");
+  const headingRow = createElement("tr");
+  for (const label of headers) {
+    const heading = createElement("th", "", label);
+    heading.scope = "col";
+    headingRow.append(heading);
+  }
+  head.append(headingRow);
+  const body = createElement("tbody");
+  for (const [name, arm] of arms) {
+    const row = createElement("tr");
+    row.append(
+      createElement("th", "", name),
+      createElement("td", "", formatNumber(arm.n)),
+      createElement("td", "", benchmarkPassRateWithInterval(arm)),
+      createElement("td", "", benchmarkTokenMean(arm, "mean_tokens_in")),
+      createElement("td", "", benchmarkTokenMean(arm, "mean_tokens_out")),
+      createElement("td", "", benchmarkTokenMean(arm, "mean_tokens_cached")),
+    );
+    body.append(row);
+  }
+  table.append(head, body);
+  container.append(table);
+}
+
+function benchmarkCsvCell(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function exportBenchmarkCsv() {
+  if (!benchmarkSummary || isUnmeasuredBenchmark(benchmarkSummary)) return;
+  const metadata = benchmarkSummary.metadata;
+  const rows = [[
+    "arm",
+    "tasks",
+    "runs",
+    "models",
+    "date",
+    "n",
+    "passes",
+    "pass_rate",
+    "pass_rate_ci95_low",
+    "pass_rate_ci95_high",
+    "mean_tokens_in",
+    "mean_tokens_out",
+    "mean_tokens_cached",
+  ]];
+  for (const [name, arm] of benchmarkArms(benchmarkSummary)) {
+    const interval = Array.isArray(arm.pass_rate_ci95) ? arm.pass_rate_ci95 : [];
+    rows.push([
+      name,
+      metadata.task_count,
+      metadata.run_count,
+      metadata.models.join("; "),
+      benchmarkSummary.generated_at || "",
+      arm.n,
+      arm.passes,
+      arm.pass_rate,
+      interval[0],
+      interval[1],
+      arm.mean_tokens_in?.mean,
+      arm.mean_tokens_out?.mean,
+      arm.mean_tokens_cached?.mean,
+    ]);
+  }
+  const csv = rows.map((row) => row.map(benchmarkCsvCell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = createElement("a");
+  link.href = url;
+  link.download = "ledger-benchmark.csv";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 async function loadBenchmarkSummary() {
+  initializeBenchmarkUi();
   const button = byId("refresh-benchmark");
   button.disabled = true;
   byId("benchmark-empty").hidden = true;
   byId("benchmark-error").hidden = true;
   byId("benchmark-content").hidden = true;
+  byId("benchmark-provenance-warning").hidden = true;
+  byId("benchmark-provenance").hidden = true;
+  byId("benchmark-token-summary").hidden = true;
+  byId("benchmark-export-csv").hidden = true;
+  benchmarkSummary = null;
   try {
     const response = await fetch(apiUrl("/api/bench/summary"));
     if (response.status === 404) {
@@ -2172,6 +2431,24 @@ async function loadBenchmarkSummary() {
       byId("benchmark-empty").hidden = false;
       return;
     }
+    if (isUnmeasuredBenchmark(summary)) {
+      byId("benchmark-provenance-warning").hidden = false;
+      return;
+    }
+    benchmarkSummary = summary;
+    const metadata = summary.metadata;
+    const date = new Date(summary.generated_at);
+    const dateLabel = Number.isNaN(date.getTime())
+      ? "Date unavailable"
+      : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" })
+        .format(date);
+    byId("benchmark-provenance").textContent =
+      `${metadata.task_count} tasks · ${metadata.run_count} runs · ` +
+      `Models: ${metadata.models.join(", ")} · ${dateLabel}`;
+    byId("benchmark-provenance").hidden = false;
+    renderBenchmarkTokenTable(summary, arms);
+    byId("benchmark-token-summary").hidden = false;
+    byId("benchmark-export-csv").hidden = false;
     renderBenchmarkChart(byId("cost-chart"), arms, "cost");
     renderBenchmarkChart(byId("pass-chart"), arms, "pass");
     byId("benchmark-content").hidden = false;
@@ -2199,6 +2476,7 @@ byId("theme-toggle").addEventListener("click", () => {
     // Theme changes remain available even when storage is disabled.
   }
 });
+initializeRedteamUi();
 byId("run-redteam").addEventListener("click", runRedteam);
 byId("refresh-benchmark").addEventListener("click", loadBenchmarkSummary);
 document.querySelectorAll(".preset-button").forEach((button) => {

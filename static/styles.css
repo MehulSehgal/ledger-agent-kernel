@@ -1828,3 +1828,142 @@ form { gap: var(--space-3); }
   .fix-diff-files, .fix-diff-toolbar, .fix-test-results, #approval-overlay { display: none !important; }
   .fix-result-diff { max-height: none; overflow: visible; }
 }
+
+.scenario-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+.scenario-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  border-color: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.scenario-card.scenario-pass { border-top: 3px solid var(--ok); }
+.scenario-card.scenario-fail { border-top: 3px solid var(--danger); }
+.scenario-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.scenario-heading h2 { min-width: 0; font-size: var(--type-16); }
+.scenario-status-ring { width: 42px; height: 42px; }
+.scenario-ring-track, .scenario-ring-progress {
+  fill: none;
+  stroke-width: 4;
+  transform: rotate(-90deg);
+  transform-origin: 21px 21px;
+}
+.scenario-ring-track { stroke: var(--border); }
+.scenario-ring-progress {
+  stroke: var(--danger);
+  stroke-linecap: round;
+}
+.scenario-status-ring.is-pass .scenario-ring-progress { stroke: var(--ok); }
+.scenario-ring-label {
+  fill: var(--text);
+  font: 600 9px var(--font-mono);
+}
+.scenario-status { padding: 4px 7px; border: 1px solid currentColor; border-radius: 999px; }
+.scenario-explanation {
+  display: -webkit-box;
+  min-height: 1.4em;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--type-12);
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.scenario-checks {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: var(--space-1);
+  margin: var(--space-1) 0;
+  align-content: start;
+}
+.scenario-check-chip {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.scenario-check-chip.is-pass {
+  border-color: var(--ok);
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.scenario-check-chip.is-fail {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--no-soft);
+}
+.scenario-check-icon { flex: 0 0 auto; font-weight: 750; }
+.scenario-evidence { align-self: end; border-color: var(--border); }
+.safety-summary {
+  border-color: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.safety-summary.all-passed { border-color: var(--ok); }
+.safety-summary.has-failures { border-color: var(--danger); }
+.safety-summary.is-running { border-color: var(--accent); }
+.redteam-progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin: var(--space-3) 0;
+  accent-color: var(--accent);
+}
+.benchmark-provenance {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--type-14);
+}
+.benchmark-provenance.is-warning {
+  border-color: var(--warn);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 650;
+}
+.benchmark-token-summary { min-width: 0; padding: var(--space-4); }
+.benchmark-token-summary h2 { margin: 0 0 var(--space-3); font-size: var(--type-16); }
+.benchmark-token-table { min-width: 0; overflow-x: auto; }
+.benchmark-token-data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-12);
+  text-align: left;
+}
+.benchmark-token-data th, .benchmark-token-data td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.benchmark-token-data th { color: var(--muted); font-weight: 600; }
+#benchmark-export-csv { margin: 0 0 var(--space-3); }
+
+@media (max-width: 720px) {
+  .scenario-list { grid-template-columns: minmax(0, 1fr); }
+  .scenario-card { padding: var(--space-3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scenario-status-ring, .scenario-ring-progress { transition: none; }
+}
