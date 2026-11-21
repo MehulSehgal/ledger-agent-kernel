@@ -58,6 +58,20 @@
           </button>
         </div>
         <p class="preset-hint" id="preset-hint" role="status" hidden></p>
+        <article class="demo-plan" id="demo-plan" aria-live="polite" hidden>
+          <header class="demo-plan-head">
+            <strong id="demo-plan-title"></strong>
+            <span class="demo-plan-status" id="demo-plan-status"></span>
+          </header>
+          <p class="demo-plan-goal" id="demo-plan-goal"></p>
+          <ol class="demo-plan-steps" id="demo-plan-steps"></ol>
+          <dl class="demo-plan-facts">
+            <div><dt>Subject</dt><dd id="demo-plan-subject"></dd></div>
+            <div><dt>Budget</dt><dd id="demo-plan-budget"></dd></div>
+            <div><dt>Routing</dt><dd id="demo-plan-routing"></dd></div>
+          </dl>
+          <p class="demo-plan-outcome" id="demo-plan-outcome" hidden></p>
+        </article>
       </div>
     </section>
     <section class="signal-strip" aria-label="Run outcomes">
