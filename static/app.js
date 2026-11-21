@@ -31,6 +31,7 @@ let localCalls = 0;
 let cloudCalls = 0;
 let unpricedCalls = 0;
 let confidentialRun = false;
+let appStatus = null;
 let blockedCount = 0;
 let activeApproval = null;
 let approvalQueue = [];
@@ -110,6 +111,7 @@ function resetRunView() {
   localCalls = 0;
   cloudCalls = 0;
   unpricedCalls = 0;
+  confidentialRun = false;
   renderLiveCost();
   byId("savings-row").hidden = true;
   byId("savings-row").classList.remove("savings-negative");
@@ -197,6 +199,17 @@ function renderLiveCost() {
   else if (!cloudCalls) node.textContent = "$0 · local only";
   else if (unpricedCalls) node.textContent = "Not priced";
   else node.textContent = formatUsd(usdTotal);
+  renderRouting();
+}
+
+function renderRouting() {
+  const node = byId("routing-value");
+  if (!localCalls && !cloudCalls && !confidentialRun) {
+    node.textContent = "—";
+    return;
+  }
+  const label = confidentialRun ? "Local-only · web off" : "Standard";
+  node.textContent = `${label} · ${localCalls} local · ${cloudCalls} cloud`;
 }
 
 function addTimelineRow(key, { title, detail = "", icon = "·", status = "", tier = null,
@@ -730,12 +743,27 @@ const demoPresets = {
   },
 };
 
+function presetHint(name) {
+  if (name !== "confidential" || !appStatus) return "";
+  if (appStatus.bifrost && !appStatus.local_models) {
+    return "Live models are on but no local model is configured, so Private review will be refused. " +
+      "Set LEDGER_LOCAL_CHAIN, LOCAL_PROVIDERS, BIFROST_URL and BIFROST_VK_LOCAL on the server.";
+  }
+  if (!appStatus.bifrost) {
+    return "Demo mode: model calls are offline stubs and web lookup is off, so nothing leaves this server.";
+  }
+  return "Local models are configured. Cloud models and web lookup stay off for this run.";
+}
+
 function applyPreset(name) {
   const preset = demoPresets[name];
   if (!preset) return;
   setMode("brief");
   byId("company").value = preset.company;
   byId("confidential").checked = preset.confidential;
+  const hint = presetHint(name);
+  byId("preset-hint").textContent = hint;
+  byId("preset-hint").hidden = !hint;
   document.querySelectorAll(".preset-button").forEach((button) => {
     button.classList.toggle("is-selected", button.dataset.preset === name);
   });
@@ -1072,6 +1100,8 @@ async function startRun(event) {
     return;
   }
   const confidential = byId("confidential").checked;
+  confidentialRun = confidential;
+  renderRouting();
   const params = mode === "brief"
     ? {
         company: byId("company").value.trim(),
@@ -1521,6 +1551,7 @@ setRunState("idle");
 fetch(apiUrl("/api/status"))
   .then((response) => response.json())
   .then((status) => {
+    appStatus = status;
     byId("service-status").textContent = status.bifrost || status.tavily
       ? `Live · ${[status.bifrost && "Bifrost", status.tavily && "Tavily"].filter(Boolean).join(" + ")}`
       : "Offline replay";

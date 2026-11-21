@@ -808,3 +808,5 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
   .open-question, .brief-source-list ol { font-size: 8px; line-height: 1.25; }
   .brief-source-list { margin-top: 8px; }
 }
+.preset-hint { margin: 10px 0 0; color: #a4b4bc; font-size: 11px; line-height: 1.45; }
+.preset-hint[hidden] { display: none; }
