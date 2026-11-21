@@ -142,11 +142,61 @@ function updateOutcomeStats(result = null) {
       : modes.model === "local"
         ? "Local model"
         : "Stub model";
+    byId("mode-status").textContent = `${searchMode} · ${modelMode}`;
     byId("signal-context-text").textContent =
-      `${verified} verified claims · ${sources} sources · ${searchMode} · ${modelMode} · receipt sealed`;
+      `${verified} verified claims · ${sources} sources · receipt sealed`;
   } else {
     byId("signal-context-text").textContent = "Ready for your first run";
   }
+}
+
+const routeScreens = {
+  "/": "home-screen",
+  "/workspace": "workspace-screen",
+  "/safety": "redteam-screen",
+  "/evaluation": "benchmark-screen",
+};
+
+function renderRoute() {
+  const route = location.hash.slice(1) || "/";
+  const screenId = routeScreens[route];
+  if (!screenId) {
+    location.hash = "#/";
+    return;
+  }
+  for (const [path, id] of Object.entries(routeScreens)) {
+    byId(id).hidden = id !== screenId;
+  }
+  document.querySelectorAll(".nav-link").forEach((link) => {
+    const active = link.getAttribute("href") === `#${route}`;
+    link.classList.toggle("is-active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  if (route === "/evaluation") loadBenchmarkSummary();
+}
+
+function setTheme(theme) {
+  const light = theme === "light";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  const toggle = byId("theme-toggle");
+  toggle.setAttribute("aria-pressed", String(light));
+  toggle.setAttribute("aria-label", `Switch to ${light ? "dark" : "light"} theme`);
+  toggle.querySelector(".theme-toggle-label").textContent = light ? "Dark" : "Light";
+  toggle.querySelector("[aria-hidden='true']").textContent = light ? "☾" : "☼";
+}
+
+function initializeTheme() {
+  let savedTheme = null;
+  try {
+    savedTheme = localStorage.getItem("ledger-theme");
+  } catch {
+    savedTheme = null;
+  }
+  const preferred = window.matchMedia?.("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+  setTheme(savedTheme === "light" || savedTheme === "dark" ? savedTheme : preferred);
 }
 
 function formatNumber(value) {
@@ -770,6 +820,7 @@ function presetHint(name) {
 function applyPreset(name) {
   const preset = demoPresets[name];
   if (!preset) return;
+  location.hash = "#/workspace";
   setMode("brief");
   byId("company").value = preset.company;
   byId("confidential").checked = preset.confidential;
@@ -1282,24 +1333,6 @@ function trapApprovalFocus(event) {
   }
 }
 
-const workspaceTabs = [
-  ["run-screen-tab", "run-screen"],
-  ["redteam-tab", "redteam-screen"],
-  ["benchmark-tab", "benchmark-screen"],
-];
-
-function setWorkspaceScreen(screenId) {
-  for (const [tabId, panelId] of workspaceTabs) {
-    const selected = panelId === screenId;
-    const tab = byId(tabId);
-    tab.setAttribute("aria-selected", String(selected));
-    tab.tabIndex = selected ? 0 : -1;
-    tab.classList.toggle("is-active", selected);
-    byId(panelId).hidden = !selected;
-  }
-  if (screenId === "benchmark-screen") loadBenchmarkSummary();
-}
-
 function renderRedteamEvidence(scenario) {
   const details = createElement("details", "scenario-evidence");
   const events = Array.isArray(scenario.evidence) ? scenario.evidence : [];
@@ -1509,21 +1542,21 @@ async function loadBenchmarkSummary() {
   }
 }
 
-function activateWorkspaceTab(tab) {
-  if (tab.key === "ArrowLeft" || tab.key === "ArrowRight") {
-    tab.preventDefault();
-    const current = workspaceTabs.findIndex(([tabId]) => byId(tabId) === tab.target);
-    const direction = tab.key === "ArrowRight" ? 1 : -1;
-    const next = workspaceTabs[(current + direction + workspaceTabs.length) % workspaceTabs.length];
-    byId(next[0]).focus();
-    byId(next[0]).click();
+window.addEventListener("hashchange", renderRoute);
+byId("home-redteam-link").addEventListener("click", (event) => {
+  event.preventDefault();
+  location.hash = "#/safety";
+  runRedteam();
+});
+byId("theme-toggle").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  setTheme(next);
+  try {
+    localStorage.setItem("ledger-theme", next);
+  } catch {
+    // Theme changes remain available even when storage is disabled.
   }
-}
-
-for (const [tabId, panelId] of workspaceTabs) {
-  byId(tabId).addEventListener("click", () => setWorkspaceScreen(panelId));
-  byId(tabId).addEventListener("keydown", activateWorkspaceTab);
-}
+});
 byId("run-redteam").addEventListener("click", runRedteam);
 byId("refresh-benchmark").addEventListener("click", loadBenchmarkSummary);
 document.querySelectorAll(".preset-button").forEach((button) => {
@@ -1594,6 +1627,8 @@ byId("meeting").value = new Date(now.getTime() - now.getTimezoneOffset() * 60000
 updateMeter(0, DEFAULT_TOKEN_BUDGET);
 updateOutcomeStats();
 setRunState("idle");
+initializeTheme();
+renderRoute();
 fetch(apiUrl("/api/status"))
   .then((response) => response.json())
   .then((status) => {

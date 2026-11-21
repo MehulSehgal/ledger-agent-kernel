@@ -3,63 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <title>Ledger — Run console</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Public+Sans:wght@400;500;600&display=swap">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0b1117">
+  <title>Ledger — Auditable agents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Ledger home">Ledger</a>
-    <p class="tagline">Cheaper agents. Stronger evidence.</p>
+    <a class="brand" href="#/" aria-label="Ledger home"><span class="brand-mark" aria-hidden="true">L</span><span>Ledger</span></a>
+    <p class="tagline">Check cheaply. Ask before acting. Prove every claim.</p>
+    <nav class="primary-nav" aria-label="Main navigation">
+      <a class="nav-link" data-route="workspace" href="#/workspace">Workspace</a>
+      <a class="nav-link" id="redteam-tab" data-route="safety" href="#/safety">Safety</a>
+      <a class="nav-link" id="benchmark-tab" data-route="evaluation" href="#/evaluation">Evaluation</a>
+    </nav>
     <div class="header-status">
       <span class="blocked-count" id="blocked-count" hidden>0 blocked</span>
       <span class="state-badge state-idle" id="run-state" role="status">Idle</span>
       <span class="service-badge" id="service-status">Checking services…</span>
+      <span class="mode-badge" id="mode-status" aria-live="polite">Awaiting run</span>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme" aria-pressed="false">
+        <span aria-hidden="true">☼</span><span class="theme-toggle-label">Light</span>
+      </button>
     </div>
   </header>
 
   <main>
-    <nav class="screen-tabs" role="tablist" aria-label="Workspace">
-      <button id="run-screen-tab" class="screen-tab is-active" type="button" role="tab"
-        aria-selected="true" aria-controls="run-screen" tabindex="0">Run</button>
-      <button id="redteam-tab" class="screen-tab" type="button" role="tab"
-        aria-selected="false" aria-controls="redteam-screen" tabindex="-1">Red-team</button>
-      <button id="benchmark-tab" class="screen-tab" type="button" role="tab"
-        aria-selected="false" aria-controls="benchmark-screen" tabindex="-1">Benchmark</button>
-    </nav>
-    <section id="run-screen" role="tabpanel" aria-labelledby="run-screen-tab">
-    <section class="hero-banner" aria-labelledby="hero-heading">
-      <div class="hero-copy">
-        <p class="eyebrow">Evidence command center</p>
-        <h1 id="hero-heading">Turn uncertainty into an auditable decision.</h1>
-        <p class="hero-description">Ledger orchestrates research and repository fixes with proof attached to every important step.</p>
-        <div class="hero-trust">
-          <span><i class="trust-dot trust-dot-blue"></i>Evidence-first</span>
-          <span><i class="trust-dot trust-dot-green"></i>Policy-gated</span>
-          <span><i class="trust-dot trust-dot-violet"></i>Local-first</span>
-        </div>
-      </div>
-      <div class="hero-demo">
-        <p class="eyebrow">Jump-start a demo</p>
-        <p class="hero-demo-copy">Choose a scenario and see the receipt update in real time.</p>
-        <div class="preset-list" role="list" aria-label="Demo presets">
-          <button class="preset-button" type="button" data-preset="board">
-            <span class="preset-icon">↗</span>
-            <span><strong>Board prep</strong><small>Company signal brief</small></span>
-          </button>
-          <button class="preset-button" type="button" data-preset="market">
-            <span class="preset-icon">◎</span>
-            <span><strong>Market scan</strong><small>Fresh evidence window</small></span>
-          </button>
-          <button class="preset-button" type="button" data-preset="confidential">
-            <span class="preset-icon">P</span>
-            <span><strong>Private review</strong><small>Local-only routing</small></span>
-          </button>
-        </div>
-        <p class="preset-hint" id="preset-hint" role="status" hidden></p>
+    <section id="home-screen" class="route-screen home-screen" aria-labelledby="home-heading" hidden>
+      <div class="home-content">
+        <section class="home-intro">
+          <p class="eyebrow">Research and repository work, with proof attached</p>
+          <h1 id="home-heading">Agents you can audit.</h1>
+          <p class="home-subhead">Ledger checks evidence, gates actions with policy, and keeps a record of what happened.</p>
+          <div class="home-actions">
+            <a class="primary-button" href="#/workspace">Open workspace</a>
+            <a class="secondary-button" id="home-redteam-link" href="#/safety">Run the red-team</a>
+          </div>
+        </section>
+        <section class="proof-grid" aria-label="Ledger principles">
+          <article class="proof-card"><span class="proof-index">01</span><h2>Evidence-first</h2><p>Claims are checked against dated sources before they shape a brief.</p></article>
+          <article class="proof-card"><span class="proof-index">02</span><h2>Policy-gated</h2><p>Actions require explicit policy approval, never model persuasion.</p></article>
+          <article class="proof-card"><span class="proof-index">03</span><h2>Local-first</h2><p>Private work stays on local routes, with web lookup disabled.</p></article>
+        </section>
+        <section class="home-how" aria-labelledby="how-heading">
+          <div class="section-heading"><p class="eyebrow">A clear trail, end to end</p><h2 id="how-heading">How it works</h2></div>
+          <ol class="how-steps">
+            <li><span>1</span><div><h3>Set the scope</h3><p>Choose the question, repository, and budget.</p></div></li>
+            <li><span>2</span><div><h3>Check and gate</h3><p>Verify claims and ask before protected actions.</p></div></li>
+            <li><span>3</span><div><h3>Review the proof</h3><p>Inspect sources, decisions, and the metered receipt.</p></div></li>
+          </ol>
+        </section>
+        <section class="home-scenarios" aria-labelledby="scenario-heading">
+          <div class="section-heading"><p class="eyebrow">A quick starting point</p><h2 id="scenario-heading">Try a scenario</h2></div>
+          <div class="scenario-chips" aria-label="Demo scenarios">
+            <button class="preset-button" type="button" data-preset="board">Board prep</button>
+            <button class="preset-button" type="button" data-preset="market">Market scan</button>
+            <button class="preset-button" type="button" data-preset="confidential">Private review</button>
+          </div>
+          <p class="preset-hint" id="preset-hint" role="status" hidden></p>
+        </section>
+        <footer class="home-footer">
+          <span>Auditable by design.</span>
+          <a href="https://github.com/MehulSehgal/ledger-agent-kernel" target="_blank" rel="noopener noreferrer">View Ledger on GitHub ↗</a>
+        </footer>
       </div>
     </section>
+    <section id="workspace-screen" class="route-screen" aria-label="Workspace" hidden>
+    <section id="run-screen" aria-label="Run workspace">
     <section class="signal-strip" aria-label="Run outcomes">
       <div class="signal-card"><span class="signal-icon signal-icon-blue">✓</span><div><strong id="stat-verified">0</strong><span>verified claims</span></div></div>
       <div class="signal-card"><span class="signal-icon signal-icon-green">◉</span><div><strong id="stat-sources">0</strong><span>sources checked</span></div></div>
@@ -224,12 +237,12 @@
     </aside>
     </div>
     </section>
-    <section id="redteam-screen" class="tool-screen" role="tabpanel"
-      aria-labelledby="redteam-tab" hidden>
+    </section>
+    <section id="redteam-screen" class="route-screen tool-screen" aria-labelledby="redteam-heading" hidden>
       <div class="tool-heading">
         <div>
           <p class="eyebrow">Safety checks</p>
-          <h1>Red-team scenarios</h1>
+          <h1 id="redteam-heading">Red-team scenarios</h1>
           <p>Run repository, replay, traversal, and confidential-routing checks locally.</p>
         </div>
         <button class="primary-button" id="run-redteam" type="button">Run scenarios</button>
@@ -239,12 +252,11 @@
       </p>
       <ol class="scenario-list" id="redteam-results" aria-live="polite"></ol>
     </section>
-    <section id="benchmark-screen" class="tool-screen" role="tabpanel"
-      aria-labelledby="benchmark-tab" hidden>
+    <section id="benchmark-screen" class="route-screen tool-screen" aria-labelledby="benchmark-heading" hidden>
       <div class="tool-heading">
         <div>
           <p class="eyebrow">Measured results</p>
-          <h1>Benchmark</h1>
+          <h1 id="benchmark-heading">Benchmark</h1>
           <p>Compare verified outcomes and pass rates across every recorded arm.</p>
         </div>
         <button class="secondary-button" id="refresh-benchmark" type="button">Refresh</button>
