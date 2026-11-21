@@ -27,6 +27,10 @@ let totalUsed = 0;
 let budgetCap = DEFAULT_TOKEN_BUDGET;
 let usdTotal = 0;
 let priceUnverified = false;
+let localCalls = 0;
+let cloudCalls = 0;
+let unpricedCalls = 0;
+let confidentialRun = false;
 let blockedCount = 0;
 let activeApproval = null;
 let approvalQueue = [];
@@ -101,7 +105,12 @@ function resetRunView() {
   byId("account-budget").hidden = true;
   byId("call-list").replaceChildren(createElement("li", "muted", "No calls yet"));
   byId("price-warning").hidden = true;
-  byId("live-usd").textContent = "—";
+  usdTotal = 0;
+  priceUnverified = false;
+  localCalls = 0;
+  cloudCalls = 0;
+  unpricedCalls = 0;
+  renderLiveCost();
   byId("savings-row").hidden = true;
   byId("savings-row").classList.remove("savings-negative");
   updateOutcomeStats();
@@ -164,14 +173,30 @@ function setPriceWarning() {
   byId("price-warning").hidden = !priceUnverified;
 }
 
-function updateCost(eventCost) {
-  if (typeof eventCost === "number" && Number.isFinite(eventCost)) {
-    usdTotal += eventCost;
-    byId("live-usd").textContent = formatUsd(usdTotal);
+function updateCost(eventCost, tier) {
+  if (tier === "local") {
+    localCalls += 1;
   } else {
-    priceUnverified = true;
-    setPriceWarning();
+    cloudCalls += 1;
+    if (typeof eventCost === "number" && Number.isFinite(eventCost)) {
+      usdTotal += eventCost;
+    } else {
+      unpricedCalls += 1;
+      priceUnverified = true;
+      setPriceWarning();
+    }
   }
+  renderLiveCost();
+}
+
+// Local and offline calls bill nothing, cloud calls need a verified price in
+// prices.json, and the kernel never guesses one: say which case this is.
+function renderLiveCost() {
+  const node = byId("live-usd");
+  if (!localCalls && !cloudCalls) node.textContent = "—";
+  else if (!cloudCalls) node.textContent = "$0 · local only";
+  else if (unpricedCalls) node.textContent = "Not priced";
+  else node.textContent = formatUsd(usdTotal);
 }
 
 function addTimelineRow(key, { title, detail = "", icon = "·", status = "", tier = null,
@@ -273,7 +298,7 @@ function handleModelCall(data, sequence) {
     cost: typeof data.usd === "number" ? data.usd : null,
   });
   updateCallList();
-  updateCost(data.usd);
+  updateCost(data.usd, data.tier || "local");
 }
 
 function updateCallList(receiptCalls = null) {
@@ -662,12 +687,17 @@ function handleResult(result) {
   const receipt = result.receipt;
   if (receipt) {
     updateMeter(receipt.tokens, receipt.cap);
-    if (typeof receipt.usd === "number") {
-      usdTotal = receipt.usd;
-      byId("live-usd").textContent = formatUsd(usdTotal);
-    }
-    priceUnverified = receipt.prices_verified === false || receipt.usd === null;
+    if (typeof receipt.usd === "number") usdTotal = receipt.usd;
+    confidentialRun = Boolean(result.confidential);
+    const calls = Array.isArray(receipt.calls) ? receipt.calls : [];
+    localCalls = calls.filter(
+      (call) => confidentialRun || call.model === "offline" || call.tier === "local",
+    ).length;
+    cloudCalls = calls.length - localCalls;
+    unpricedCalls = cloudCalls > 0 && receipt.usd === null ? cloudCalls : 0;
+    priceUnverified = unpricedCalls > 0;
     setPriceWarning();
+    renderLiveCost();
     updateCallList(receipt.calls);
   }
   if (result.mode === "brief") {
