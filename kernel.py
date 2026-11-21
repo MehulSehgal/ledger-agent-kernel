@@ -332,7 +332,9 @@ class Meter:
             "tokens_cached": tokens_cached,
             "model": model,
         })
-        event_tier = tier if model != "offline" else "local"
+        # Confidential runs only ever reach local models (the router fails closed),
+        # so their calls are local and bill no API cost.
+        event_tier = "local" if model == "offline" or self.confidential else tier
         usd = 0.0 if event_tier == "local" else self._model_cost(model, tin, tout)
         self.run.emit("model_call", {
             "label": label,
