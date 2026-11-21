@@ -282,7 +282,10 @@ def run_brief(
     for source_id, source in enumerate(srcs):
         source["id"] = source_id
 
-    _step(run, "sources", "Collect sources", "ok", f"{len(srcs)} sources retained")
+    retained = f"{len(srcs)} sources retained"
+    if confidential:
+        retained += " · web lookup off (confidential)"
+    _step(run, "sources", "Collect sources", "ok", retained)
     run.check_cancelled()
     ctx = "\n".join(
         f'<source id="{s["id"]}">{html.escape(s["text"], quote=False)}</source>'
@@ -504,7 +507,8 @@ def run_brief(
     }
     if extract_error:
         audit["extract_error"] = extract_error
-    result = {"mode": "brief", "live": live, "company": company, "meeting": meeting,
+    result = {"mode": "brief", "live": live, "confidential": confidential,
+            "company": company, "meeting": meeting,
             "meeting_at": meeting_at.isoformat() if meeting_at else None,
             "window": [window_start.isoformat(), window_end.isoformat()],
             "sources": result_sources,

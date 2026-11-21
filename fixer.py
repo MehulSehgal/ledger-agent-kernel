@@ -750,6 +750,7 @@ def _run_fix_inner(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
             "steps": steps,
             "receipt": meter.receipt(),
             "status": status,
+            "confidential": bool(confidential),
         }
         if message:
             result["message"] = message
