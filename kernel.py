@@ -233,6 +233,8 @@ class Meter:
 
             exceeds_local = local_used + total > self.cap
             exceeds_user = user_cap is not None and user_used + total > user_cap
+            if (crosses_local_soft_cap or crosses_user_soft_cap) and not (exceeds_local or exceeds_user):
+                self._emit_budget("degraded")
             if tier == "strong" and (exceeds_local or exceeds_user):
                 effective_tier = "cheap"
             if exceeds_local or exceeds_user:

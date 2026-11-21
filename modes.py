@@ -11,6 +11,74 @@ QUERIES = {"news": "{c} news", "launches": "{c} product launch", "hires": "{c} h
            "funding": "{c} funding raised", "risks": "{c} lawsuit OR outage OR layoffs"}
 sents = lambda t: [x for x in re.split(r"(?<=[.!?])\s+", t) if len(x) > 25]
 
+
+def _clean_live_text(text):
+    if not isinstance(text, str):
+        return ""
+    text = re.sub(r"(?<!\w)#{1,6}\s*", " ", text)
+    text = re.sub(r"\bImage\s+\d+\b", " ", text, flags=re.I)
+    text = re.sub(r"https?://\S+", " ", text, flags=re.I)
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r"^#{1,6}\s*", line):
+            line = re.sub(r"^#{1,6}\s*", "", line)
+        if re.match(r"^image\s+\d+\b", line, re.I):
+            continue
+        line = re.sub(r"https?://\S+", " ", line, flags=re.I)
+        line = re.sub(r"\b(?:home|menu|navigation|skip to content|read more)\b\s*[>|/]*\s*$", " ", line, flags=re.I)
+        line = re.sub(r"^\s*[>|/\-+]+\s*$", "", line)
+        line = re.sub(r"\s+", " ", line).strip(" \t,;")
+        if line:
+            lines.append(line)
+    return re.sub(r"\s+", " ", " ".join(lines)).strip()
+
+
+def _live_claim_sentences(text):
+    cleaned = _clean_live_text(text)
+    candidates = re.split(r"(?<=[.!?])\s+", cleaned)
+    claims = []
+    for sentence in candidates:
+        sentence = re.sub(r"\s+", " ", sentence).strip(" \t,;")
+        if not sentence:
+            continue
+        words = re.findall(r"\b[\w'-]+\b", sentence)
+        letters_and_digits = sum(char.isalnum() for char in sentence)
+        symbol_count = sum(not char.isalnum() and not char.isspace() for char in sentence)
+        if len(words) < 6 or len(words) > 45:
+            if len(words) > 45:
+                sentence = " ".join(words[:45]).rstrip(".,;:!?")
+            else:
+                continue
+        if len(sentence) > 280:
+            sentence = sentence[:280].rsplit(" ", 1)[0].rstrip(".,;:!?")
+        if letters_and_digits and symbol_count / max(len(sentence), 1) > 0.5:
+            continue
+        if len(re.findall(r"\b[\w'-]+\b", sentence)) >= 6:
+            claims.append(sentence)
+    return claims
+
+
+def _claim_mentions_entity(claim, entity):
+    claim_words = set(re.findall(r"[a-z0-9]+", claim.lower()))
+    entity_words = [
+        word.lower()
+        for word in re.findall(r"[a-z0-9]+", entity.lower())
+        if len(word) >= 3
+        and word.lower() not in {"the", "and", "for", "with", "from", "inc", "llc", "corp", "company"}
+    ]
+    if not entity_words:
+        return False
+    if len(entity_words) == 1:
+        return entity_words[0] in claim_words
+    normalized_claim = re.sub(r"\s+", " ", claim.lower())
+    normalized_entity = re.sub(r"\s+", " ", entity.lower())
+    if normalized_entity in normalized_claim:
+        return True
+    return all(word in claim_words for word in entity_words)
+
 def demo_sources(c, t):
     d = lambda n: (t - timedelta(n)).isoformat()
     rows = [("launches", 3, "Atlas 2 launch", f"{c} unveiled Atlas 2, a warehouse robot that moves 40 percent more pallets per hour. Shipments begin in December. Analysts called the pricing aggressive."),
@@ -128,6 +196,23 @@ def _step(run, step_id, title, status, detail=""):
     })
 
 
+def _stub_model_call(meter, label, tier, tin, tout, produce):
+    try:
+        reservation = meter.reserve(1, 1, tier)
+        result = produce()
+        meter.log(label, tier, tin, tout, model="offline", reservation=reservation)
+        return result, None
+    except BudgetExhausted as exc:
+        meter.run.emit("blocked", {
+            "kind": "budget",
+            "reason": str(exc),
+            "state": "exhausted",
+            "source": "meter",
+        })
+        meter._emit_budget("exhausted")
+        return None, "budget exhausted"
+
+
 def _offline_questions(claims, srcs, company):
     templates = {
         "funding": [
@@ -148,6 +233,7 @@ def _offline_questions(claims, srcs, company):
         ],
     }
     questions = []
+    seen = set()
     for claim in claims:
         topic = srcs[claim["source_id"]].get("topic", "news")
         options = templates.get(topic, [
@@ -155,8 +241,12 @@ def _offline_questions(claims, srcs, company):
             f"What next steps could follow this development at {company}?",
         ])
         for question in options:
-            questions.append(f"inference [{claim['claim_id']}]: {question}")
-            if len(questions) == 3:
+            rendered = f"inference [{claim['claim_id']}]: {question}"
+            normalized = re.sub(r"\s+", " ", rendered.lower()).strip()
+            if normalized not in seen:
+                seen.add(normalized)
+                questions.append(rendered)
+            if len(questions) >= 3:
                 return questions
     return questions
 
@@ -186,6 +276,7 @@ def _live_questions(meter, company, claims):
         raise ValueError("open-question response must be a JSON list")
     claim_ids = {claim["claim_id"] for claim in claims}
     questions = []
+    seen = set()
     for item in parsed:
         if (
             isinstance(item, dict)
@@ -193,10 +284,12 @@ def _live_questions(meter, company, claims):
             and isinstance(item.get("question"), str)
             and item["question"].strip()
         ):
-            questions.append(
-                f"inference [{item['claim_id']}]: {item['question'].strip()}"
-            )
-        if len(questions) == 3:
+            rendered = f"inference [{item['claim_id']}]: {item['question'].strip()}"
+            normalized = re.sub(r"\s+", " ", rendered.lower()).strip()
+            if normalized not in seen:
+                seen.add(normalized)
+                questions.append(rendered)
+        if len(questions) >= 3:
             break
     if not 2 <= len(questions) <= 3:
         raise ValueError("open-question response must contain 2 or 3 linked questions")
@@ -274,6 +367,8 @@ def run_brief(
 
     clean_sources = []
     for source in srcs:
+        if live:
+            source["text"] = _clean_live_text(source.get("text", ""))
         if _possible_injection(source.get("text", "")):
             dropped.append({"title": source["title"], "reason": "possible prompt injection"})
             continue
@@ -292,6 +387,7 @@ def run_brief(
         for s in srcs
     )
     _step(run, "claims", "Extract and verify claims", "running")
+    budget_partial = False
     if live_llm():
         try:
             claims = json.loads(re.search(
@@ -312,10 +408,47 @@ def run_brief(
             if isinstance(claim, dict) and isinstance(claim.get("quote"), str):
                 claim["quote"] = html.unescape(claim["quote"])
     else:
-        claims = extract_offline(srcs); m.log("extract claims (offline stub)", "cheap", tok(ctx), tok(json.dumps(claims)))
+        stub_claims = {"value": []}
+        claims, budget_error = _stub_model_call(
+            m,
+            "extract claims (offline stub)",
+            "cheap",
+            tok(ctx),
+            tok(json.dumps(stub_claims["value"])) + 1,
+            lambda: extract_offline(srcs),
+        )
+        if budget_error:
+            claims = []
+            budget_partial = True
     ok, rejected, red_team, claim_events = [], [], [], []
     claim_seq = 0
     for c in claims:
+        if not isinstance(c, dict):
+            continue
+        if live:
+            claim_text = c.get("claim")
+            quote_text = c.get("quote")
+            candidates = _live_claim_sentences(claim_text) if isinstance(claim_text, str) else []
+            if candidates:
+                c["claim"] = candidates[0]
+                c["quote"] = _clean_live_text(quote_text) if isinstance(quote_text, str) else c.get("quote")
+            else:
+                c["claim"] = ""
+        if live and not _claim_mentions_entity(str(c.get("claim", "")), company):
+            rejected.append({"claim": c.get("claim", ""), "reason": f"not about {company}"})
+            claim_seq += 1
+            claim_id = f"claim-{claim_seq}"
+            c["claim_id"] = claim_id
+            source_id = c.get("source_id")
+            source = (
+                srcs[source_id]
+                if isinstance(source_id, int) and not isinstance(source_id, bool)
+                and 0 <= source_id < len(srcs)
+                else None
+            )
+            checks = _claim_checks(c, source, window_end, f"not about {company}")
+            claim_events.append((claim_id, c, source, f"not about {company}", checks))
+            continue
         claim_seq += 1
         claim_id = f"claim-{claim_seq}"
         c["claim_id"] = claim_id
@@ -400,7 +533,17 @@ def run_brief(
                     "topic": c["topic"],
                     "claim_ids": [c["claim_id"]],
                 })
-            m.log("synthesize (offline stub)", "strong", tok(json.dumps(ok)), tok(json.dumps(bullets)))
+            bullets, budget_error = _stub_model_call(
+                m,
+                "synthesize (offline stub)",
+                "strong",
+                tok(json.dumps(ok)),
+                tok(json.dumps(bullets)),
+                lambda: bullets,
+            )
+            if budget_error:
+                bullets = []
+                budget_partial = True
         run.check_cancelled()
 
     claim_by_id = {claim["claim_id"]: claim for claim in ok}
@@ -507,7 +650,17 @@ def run_brief(
     }
     if extract_error:
         audit["extract_error"] = extract_error
+    result_modes = {
+        "search": "live" if live else "replay",
+        "model": (
+            "local" if live_llm() and confidential
+            else "live" if live_llm()
+            else "stub"
+        ),
+    }
     result = {"mode": "brief", "live": live, "confidential": confidential,
+            "modes": result_modes,
+            "status": "partial" if budget_partial else "completed",
             "company": company, "meeting": meeting,
             "meeting_at": meeting_at.isoformat() if meeting_at else None,
             "window": [window_start.isoformat(), window_end.isoformat()],

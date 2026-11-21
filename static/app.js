@@ -134,9 +134,19 @@ function updateOutcomeStats(result = null) {
   byId("stat-sources").textContent = formatNumber(sources);
   byId("stat-tokens").textContent = formatNumber(receipt.tokens || totalUsed);
   byId("stat-rejected").textContent = formatNumber(rejected);
-  byId("signal-context-text").textContent = result
-    ? `${verified} verified claims · ${sources} sources · receipt sealed`
-    : "Ready for your first run";
+  if (result) {
+    const modes = result.modes || {};
+    const searchMode = modes.search === "live" ? "Live search" : "Replay search";
+    const modelMode = modes.model === "live"
+      ? "Live model"
+      : modes.model === "local"
+        ? "Local model"
+        : "Stub model";
+    byId("signal-context-text").textContent =
+      `${verified} verified claims · ${sources} sources · ${searchMode} · ${modelMode} · receipt sealed`;
+  } else {
+    byId("signal-context-text").textContent = "Ready for your first run";
+  }
 }
 
 function formatNumber(value) {
