@@ -28,3 +28,20 @@ def test_offline_stub_calls_stay_local(tmp_path):
     meter = kernel.Meter(1000, run=run, repo_root=tmp_path)
     meter.log("draft (offline stub)", "cheap", 10, 5)
     assert _model_calls(run)[0]["tier"] == "local"
+
+
+def test_brief_result_reports_confidential_and_web_off(tmp_path, monkeypatch):
+    import modes
+
+    monkeypatch.setattr(modes, "live_llm", lambda: False)
+    run = Run()
+    result = modes.run_brief(
+        "Acme", "Planning", confidential=True, repo_root=tmp_path, run=run
+    )
+    assert result["confidential"] is True
+    assert result["live"] is False
+    details = [e["data"].get("detail", "") for e in run.events if e["type"] == "step"]
+    assert any("web lookup off" in detail for detail in details)
+
+    standard = modes.run_brief("Acme", "Planning", confidential=False, repo_root=tmp_path)
+    assert standard["confidential"] is False
