@@ -272,7 +272,43 @@ function durationLabel(startedAt, finishedAt) {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
+function advancePlan(stepId) {
+  if (!activePlan || !(stepId in planStepIndex)) return;
+  const active = planStepIndex[stepId];
+  byId("demo-plan-steps").querySelectorAll("li").forEach((item, index) => {
+    item.classList.toggle("is-done", index < active);
+    item.classList.toggle("is-active", index === active);
+  });
+  setPlanStatus("Running", "");
+}
+
+function finishPlan(result) {
+  if (!activePlan) return;
+  byId("demo-plan-steps").querySelectorAll("li").forEach((item) => {
+    item.classList.remove("is-active");
+    item.classList.add("is-done");
+  });
+  setPlanStatus("Receipt sealed", "done");
+  const audit = result.audit || {};
+  const receipt = result.receipt || {};
+  const sources = Array.isArray(result.sources) ? result.sources.length : 0;
+  const rejected = Array.isArray(audit.rejected_claims) ? audit.rejected_claims.length : 0;
+  const routing = result.confidential ? "Local only" : "Standard";
+  byId("demo-plan-outcome").textContent =
+    `${formatNumber(Number(audit.accepted) || 0)} verified claims from ${formatNumber(sources)} sources · ` +
+    `${formatNumber(rejected)} rejected · ${formatNumber(receipt.tokens || 0)} tokens · ${routing}`;
+  byId("demo-plan-outcome").hidden = false;
+}
+
+function failPlan(message) {
+  if (!activePlan) return;
+  setPlanStatus("Stopped", "failed");
+  byId("demo-plan-outcome").textContent = message || "The run stopped before the receipt was sealed.";
+  byId("demo-plan-outcome").hidden = false;
+}
+
 function handleStep(data, timestamp) {
+  advancePlan(data.id);
   const key = `step:${data.id || data.title}:${data.title || ""}`;
   const prior = timelineRows.get(key);
   const startedAt = prior?.startedAt || (data.status === "running" ? timestamp : null);
@@ -725,6 +761,7 @@ function handleResult(result) {
   showMeasuredSavings(result, receipt);
   closeSidePanel();
   closeApprovalDrawer();
+  finishPlan(result);
   setRunState("done");
   closeStream();
   stopPolling();
@@ -900,6 +937,7 @@ function parseEvent(event) {
   else if (type === "result") handleResult(data);
   else if (type === "error") {
     closeApprovalDrawer();
+    failPlan(data.message);
     addTimelineRow(`run-error:${sequence}`, {
       title: "Run error",
       detail: data.message || "The run failed.",
