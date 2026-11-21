@@ -810,3 +810,10 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
 }
 .preset-hint { margin: 10px 0 0; color: #a4b4bc; font-size: 11px; line-height: 1.45; }
 .preset-hint[hidden] { display: none; }
+.fix-result { margin: 18px 0 0 37px; }
+.fix-result[hidden] { display: none; }
+.fix-result > h3 { margin: 0 0 10px; font: 600 19px/1.2 "Newsreader", Georgia, serif; }
+.fix-result-status { margin: 0 0 6px; font-weight: 600; }
+.fix-result-message, .fix-result-hash { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.fix-result-message[hidden], .fix-result-hash[hidden], .fix-result-diff[hidden] { display: none; }
+.fix-result-diff { margin: 0; padding: 12px; max-height: 360px; overflow: auto; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre; }

@@ -94,6 +94,7 @@ function resetRunView() {
   byId("timeline").replaceChildren();
   byId("brief-result").hidden = true;
   byId("brief-actions").hidden = true;
+  byId("fix-result").hidden = true;
   byId("brief-bullets").replaceChildren();
   byId("open-question-list").replaceChildren();
   byId("brief-sources").replaceChildren();
@@ -718,6 +719,7 @@ function handleResult(result) {
   } else {
     byId("brief-result").hidden = true;
     byId("brief-actions").hidden = true;
+    renderFixResult(result);
   }
   updateOutcomeStats(result);
   showMeasuredSavings(result, receipt);
@@ -768,6 +770,40 @@ function applyPreset(name) {
     button.classList.toggle("is-selected", button.dataset.preset === name);
   });
   byId("company").focus();
+}
+
+const fixStatusLabels = {
+  green: "Fixed: the tests pass",
+  partial: "Stopped before finishing",
+};
+
+function renderFixResult(result) {
+  const panel = byId("fix-result");
+  const diff = typeof result.diff === "string" ? result.diff : "";
+  const message = result.message || "";
+  if (!diff && !message && !result.diff_hash) {
+    panel.hidden = true;
+    return;
+  }
+  byId("fix-result-status").textContent =
+    fixStatusLabels[result.status] || String(result.status || "Finished");
+  byId("fix-result-message").textContent = message;
+  byId("fix-result-message").hidden = !message;
+  const pre = byId("fix-result-diff");
+  pre.replaceChildren();
+  pre.hidden = !diff;
+  if (diff) appendDiff(pre, diff);
+  const hash = byId("fix-result-hash");
+  if (!diff && result.diff_hash) {
+    const symbols = Array.isArray(result.symbols) && result.symbols.length
+      ? ` Functions and classes touched: ${result.symbols.join(", ")}.`
+      : "";
+    hash.textContent = `The diff is withheld for this confidential run. Hash: ${result.diff_hash}.${symbols}`;
+    hash.hidden = false;
+  } else {
+    hash.hidden = true;
+  }
+  panel.hidden = false;
 }
 
 function showMeasuredSavings(result, receipt) {
