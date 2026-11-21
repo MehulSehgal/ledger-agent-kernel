@@ -153,3 +153,21 @@ python -m http.server 4173 --directory static
 
 Set `window.LEDGER_API_URL = "http://127.0.0.1:8000"` in
 `static/runtime-config.js`, then open `http://127.0.0.1:4173`.
+
+## Private review (local-only routing)
+
+With live models on, a confidential run is refused unless a local model route
+exists. Set all of these on the backend:
+
+```bash
+fly secrets set LEDGER_LOCAL_CHAIN="provider/model" LOCAL_PROVIDERS="provider" \
+  BIFROST_URL="https://your-gateway" BIFROST_VK_LOCAL="your-local-key"
+```
+
+`/api/status` reports `local_models: true` once they are valid, and the page
+explains the state when you pick Private review. Without a live model the demo
+uses offline stubs, which are local by construction.
+
+By default a confidential Fix run returns its diff to the person who started
+it. Set `LEDGER_CONFIDENTIAL_DIFF=off` to return only a hash and the changed
+symbols. See `docs/PRICING.md` for how the live cost line is decided.
