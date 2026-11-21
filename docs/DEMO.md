@@ -27,4 +27,4 @@ For a Fix walkthrough, use a disposable copy of `bench/tasks/toy_cart`, configur
 
 ## Demo scenarios
 
-Under "Jump-start a demo", Board prep, Market scan and Private review each fill the Brief form, start the run and show a plan card that tracks the steps and summarizes the sealed receipt. They set their own token budgets (6,000, 5,000 and 5,000) so a run finishes; the Brief form itself still defaults to 100 tokens. Private review turns on local-only routing.
+Under "Jump-start a demo", Board prep, Market scan and Private review each fill the Brief form, start the run and show a plan card that tracks the steps and summarizes the sealed receipt. They set their own token budgets (8,000, 5,000 and 5,000) so a run finishes; the Brief form itself still defaults to 100 tokens. Private review turns on local-only routing.

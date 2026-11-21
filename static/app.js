@@ -772,7 +772,7 @@ const demoPresets = {
     title: "Board prep",
     company: "Acme Robotics",
     confidential: false,
-    budget: 6000,
+    budget: 8000,
     routing: "Standard",
     goal: "A one-page signal brief for a board meeting. Only claims backed by a retained source reach the page.",
     steps: ["Collect sources", "Extract and verify claims", "Reject unsupported claims", "Seal the receipt"],
