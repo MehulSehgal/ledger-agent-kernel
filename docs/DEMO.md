@@ -24,3 +24,7 @@ Open the localhost address printed by Uvicorn. For an offline walkthrough, leave
 ## Optional follow-up
 
 For a Fix walkthrough, use a disposable copy of `bench/tasks/toy_cart`, configure its parent in `LEDGER_ALLOWED_ROOTS`, and set `LEDGER_OFFLINE_STUB=1`. Review the approval drawer before proceeding. The stub is for the seeded toy task only; it is not evidence that a live model integration works.
+
+## Demo scenarios
+
+Under "Jump-start a demo", Board prep, Market scan and Private review each fill the Brief form, start the run and show a plan card that tracks the steps and summarizes the sealed receipt. They set their own token budgets (6,000, 5,000 and 5,000) so a run finishes; the Brief form itself still defaults to 100 tokens. Private review turns on local-only routing.
