@@ -732,16 +732,31 @@ function handleResult(result) {
 
 const demoPresets = {
   board: {
+    title: "Board prep",
     company: "Acme Robotics",
     confidential: false,
+    budget: 6000,
+    routing: "Standard",
+    goal: "A one-page signal brief for a board meeting. Only claims backed by a retained source reach the page.",
+    steps: ["Collect sources", "Extract and verify claims", "Reject unsupported claims", "Seal the receipt"],
   },
   market: {
-    company: "Acme Robotics",
+    title: "Market scan",
+    company: "Northwind Energy",
     confidential: false,
+    budget: 5000,
+    routing: "Standard",
+    goal: "A scan of recent coverage that shows which claims are verified and which were rejected as unsupported.",
+    steps: ["Collect sources", "Extract and verify claims", "Reject unsupported claims", "Seal the receipt"],
   },
   confidential: {
-    company: "Acme Robotics",
+    title: "Private review",
+    company: "Helios Biotech",
     confidential: true,
+    budget: 5000,
+    routing: "Local only",
+    goal: "The same evidence checks with web lookup off and every model call kept on local models.",
+    steps: ["Keep routing local", "Extract and verify claims", "Reject unsupported claims", "Seal the receipt"],
   },
 };
 
