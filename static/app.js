@@ -772,11 +772,39 @@ function presetHint(name) {
   return "Local models are configured. Cloud models and web lookup stay off for this run.";
 }
 
+let activePlan = null;
+const planStepIndex = { routing: 0, sources: 0, extract: 0, claims: 1, synthesize: 2 };
+
+function setPlanStatus(label, tone) {
+  const badge = byId("demo-plan-status");
+  badge.textContent = label;
+  badge.className = `demo-plan-status${tone ? ` is-${tone}` : ""}`;
+}
+
+function renderPlanCard(name) {
+  const preset = demoPresets[name];
+  activePlan = name;
+  byId("demo-plan-title").textContent = preset.title;
+  byId("demo-plan-goal").textContent = preset.goal;
+  byId("demo-plan-subject").textContent = preset.company;
+  byId("demo-plan-budget").textContent = `${formatNumber(preset.budget)} tokens`;
+  byId("demo-plan-routing").textContent = preset.routing;
+  byId("demo-plan-steps").replaceChildren(
+    ...preset.steps.map((label) => createElement("li", "", label)),
+  );
+  byId("demo-plan-outcome").hidden = true;
+  setPlanStatus("Starting", "");
+  byId("demo-plan").hidden = false;
+}
+
 function applyPreset(name) {
   const preset = demoPresets[name];
   if (!preset) return;
+  const inFlight = runId && !terminalStates.has(byId("run-state").textContent.toLowerCase());
+  if (inFlight || requestPending) return;
   setMode("brief");
   byId("company").value = preset.company;
+  byId("token-budget").value = String(preset.budget);
   byId("confidential").checked = preset.confidential;
   const hint = presetHint(name);
   byId("preset-hint").textContent = hint;
@@ -784,7 +812,9 @@ function applyPreset(name) {
   document.querySelectorAll(".preset-button").forEach((button) => {
     button.classList.toggle("is-selected", button.dataset.preset === name);
   });
-  byId("company").focus();
+  renderPlanCard(name);
+  byId("run-form").requestSubmit();
+  byId("run-form").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 const fixStatusLabels = {
