@@ -190,18 +190,62 @@
             </section>
             <section class="brief-result" id="brief-result" aria-labelledby="brief-result-heading" hidden>
               <h3 id="brief-result-heading"></h3>
-              <ul class="brief-bullets" id="brief-bullets"></ul>
-              <p class="brief-empty" id="brief-empty" hidden>
-                No claim passed verification, so the strong model was never called.
-              </p>
-              <section class="open-questions" id="open-questions" hidden>
-                <h4>Open questions</h4>
-                <ul id="open-question-list"></ul>
-              </section>
-              <section class="brief-source-list" id="brief-source-section" hidden>
-                <h4>Sources</h4>
-                <ol id="brief-sources"></ol>
-              </section>
+              <div class="brief-master-detail" id="brief-master-detail">
+                <div class="brief-claims-column">
+                  <ul class="brief-bullets" id="brief-bullets"></ul>
+                  <p class="brief-empty" id="brief-empty" hidden>
+                    No claim passed verification, so the strong model was never called.
+                  </p>
+                  <details class="brief-rejected-details" id="brief-rejected">
+                    <summary id="rejected-summary">Rejected claims (0)</summary>
+                    <div id="rejected-groups"></div>
+                  </details>
+                  <section class="open-questions" id="open-questions" hidden>
+                    <h4>Open questions</h4>
+                    <ul id="open-question-list"></ul>
+                  </section>
+                  <section class="brief-source-list" id="brief-source-section" hidden>
+                    <details class="brief-source-details" id="brief-source-details">
+                      <summary id="brief-source-summary">Sources (0)</summary>
+                      <div class="brief-sources-table" id="brief-sources"></div>
+                    </details>
+                  </section>
+                </div>
+                <aside class="evidence-panel" id="evidence-panel" aria-labelledby="evidence-title"
+                  aria-label="Selected claim evidence" tabindex="-1">
+                  <div class="side-panel-heading">
+                    <div>
+                      <p class="eyebrow">Claim evidence</p>
+                      <h2 id="evidence-title">Select a claim</h2>
+                    </div>
+                    <button class="icon-button evidence-close" id="close-evidence" type="button"
+                      aria-label="Close source evidence">×</button>
+                  </div>
+                  <dl class="source-metadata">
+                    <div><dt>Source</dt><dd id="evidence-url">Select a claim to inspect its evidence.</dd></div>
+                    <div><dt>Date</dt><dd id="evidence-date">—</dd></div>
+                    <div><dt>Source kind</dt><dd id="evidence-kind">—</dd></div>
+                  </dl>
+                  <section class="evidence-quote" id="evidence-quote-section" hidden>
+                    <h3>Verbatim quote</h3>
+                    <blockquote id="evidence-quote"></blockquote>
+                  </section>
+                  <section class="evidence-excerpt-section" id="evidence-excerpt-section" hidden>
+                    <h3>Evidence excerpt</h3>
+                    <div class="source-excerpt" id="evidence-excerpt"></div>
+                  </section>
+                  <section class="evidence-checks" id="evidence-checks-section" hidden>
+                    <h3>Verification checks</h3>
+                    <ul class="verification-check-list" id="evidence-checks"></ul>
+                  </section>
+                  <details class="evidence-full-source" id="evidence-full-source">
+                    <summary>View full source text</summary>
+                    <div class="source-excerpt" id="evidence-source-text"></div>
+                  </details>
+                </aside>
+                <button class="evidence-scrim" id="evidence-scrim" type="button"
+                  aria-label="Close source evidence" hidden></button>
+              </div>
               <p class="copy-feedback" id="copy-feedback" role="status" aria-live="polite"></p>
             </section>
             <section class="fix-result" id="fix-result" aria-labelledby="fix-result-heading" hidden>
@@ -338,50 +382,6 @@
       </div>
       <p class="approval-feedback" id="approval-feedback" role="status" aria-live="polite"></p>
     </section>
-  </div>
-
-  <div class="side-panel-backdrop" id="evidence-overlay" hidden>
-    <aside class="side-panel" id="evidence-panel" role="dialog" aria-modal="true"
-      aria-labelledby="evidence-title" tabindex="-1">
-      <div class="side-panel-heading">
-        <div>
-          <p class="eyebrow">Claim evidence</p>
-          <h2 id="evidence-title">Source</h2>
-        </div>
-        <button class="icon-button" id="close-evidence" type="button" aria-label="Close source evidence">×</button>
-      </div>
-      <dl class="source-metadata">
-        <div><dt>URL</dt><dd id="evidence-url"></dd></div>
-        <div><dt>Date</dt><dd id="evidence-date"></dd></div>
-        <div><dt>Source kind</dt><dd id="evidence-kind"></dd></div>
-      </dl>
-      <section class="evidence-quote" id="evidence-quote-section">
-        <h3>Verbatim quote</h3>
-        <blockquote id="evidence-quote"></blockquote>
-      </section>
-      <section class="evidence-checks" id="evidence-checks-section">
-        <h3>Verification checks</h3>
-        <ul id="evidence-checks"></ul>
-      </section>
-      <section class="evidence-source">
-        <h3>Source text</h3>
-        <div class="source-excerpt" id="evidence-source-text"></div>
-      </section>
-    </aside>
-  </div>
-
-  <div class="side-panel-backdrop" id="rejected-overlay" hidden>
-    <aside class="side-panel rejected-drawer" id="rejected-panel" role="dialog" aria-modal="true"
-      aria-labelledby="rejected-title" tabindex="-1">
-      <div class="side-panel-heading">
-        <div>
-          <p class="eyebrow">Verification audit</p>
-          <h2 id="rejected-title">Rejected claims</h2>
-        </div>
-        <button class="icon-button" id="close-rejected" type="button" aria-label="Close rejected claims">×</button>
-      </div>
-      <div id="rejected-groups"></div>
-    </aside>
   </div>
 
   <script src="/runtime-config.js"></script>

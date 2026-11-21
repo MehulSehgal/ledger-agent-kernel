@@ -37,9 +37,8 @@ let activeApproval = null;
 let approvalQueue = [];
 let approvalTimer = null;
 let previousFocus = null;
-let activeSidePanel = null;
-let sidePanelPreviousFocus = null;
 let briefResult = null;
+let selectedBriefClaimIndex = -1;
 let requestPending = false;
 let toastTimer = null;
 let compactWorkspaceMedia = null;
@@ -163,6 +162,9 @@ function initializeWorkspaceLayout() {
   compactWorkspaceMedia.addEventListener("change", (event) => {
     setControlsCollapsed(event.matches);
   });
+  const evidenceSheetMedia = window.matchMedia("(max-width: 899px)");
+  evidenceSheetMedia.addEventListener("change", updateEvidencePresentation);
+  updateEvidencePresentation();
 }
 
 function showToast(message, kind = "info") {
@@ -236,7 +238,10 @@ function resetRunView() {
   byId("savings-row").classList.remove("savings-negative");
   updateOutcomeStats();
   updateMeter(0, Number(byId("token-budget").value) || budgetCap);
-  closeSidePanel();
+  closeEvidenceSheet();
+  selectedBriefClaimIndex = -1;
+  byId("brief-rejected").open = false;
+  byId("brief-source-details").open = false;
   closeApprovalDrawer();
   renderStepper();
 }
@@ -574,18 +579,35 @@ const checkLabels = {
   supported: "Claim is supported by its quote",
 };
 
-function appendHighlightedQuote(container, sourceText, quote) {
+function appendHighlightedQuote(container, sourceText, quote, maxLength = 300) {
   const source = String(sourceText || "");
   const target = String(quote || "");
   const index = source.toLocaleLowerCase().indexOf(target.toLocaleLowerCase());
   container.replaceChildren();
-  if (!target || index < 0) {
-    container.textContent = source || "Source text unavailable.";
+  if (!source) {
+    container.textContent = "Source text unavailable.";
     return;
   }
-  container.append(document.createTextNode(source.slice(0, index)));
-  const mark = createElement("mark", "", source.slice(index, index + target.length));
-  container.append(mark, document.createTextNode(source.slice(index + target.length)));
+  const limit = Number.isFinite(maxLength) ? Math.max(0, maxLength) : source.length;
+  const windowSize = Math.max(limit, index >= 0 ? target.length : 0);
+  let start = 0;
+  let end = Math.min(source.length, windowSize);
+  if (index >= 0) {
+    start = Math.max(0, index - Math.floor((windowSize - target.length) / 2));
+    end = Math.min(source.length, Math.max(index + target.length, start + windowSize));
+    start = Math.max(0, end - windowSize);
+  }
+  if (start > 0) container.append(document.createTextNode("…"));
+  if (index < 0 || !target) {
+    container.append(document.createTextNode(source.slice(start, end)));
+  } else {
+    const quoteStart = index - start;
+    container.append(document.createTextNode(source.slice(start, index)));
+    container.append(createElement("mark", "", source.slice(index, index + target.length)));
+    container.append(document.createTextNode(source.slice(index + target.length, end)));
+    if (quoteStart < 0) container.textContent = source.slice(start, end);
+  }
+  if (end < source.length) container.append(document.createTextNode("…"));
 }
 
 function renderEvidenceChecks(checks = {}) {
@@ -593,11 +615,10 @@ function renderEvidenceChecks(checks = {}) {
   list.replaceChildren();
   for (const [key, label] of Object.entries(checkLabels)) {
     const passed = checks[key] === true;
-    const row = createElement("li", `verification-check ${passed ? "pass" : "fail"}`);
-    row.append(
-      createElement("strong", "", passed ? "✓" : "✗"),
-      createElement("span", "", label),
-    );
+    const row = createElement("li", `evidence-check-icon ${passed ? "pass" : "fail"}`);
+    row.title = label;
+    row.setAttribute("aria-label", `${passed ? "Passed" : "Failed"}: ${label}`);
+    row.append(createElement("span", "", passed ? "✓" : "✗"));
     list.append(row);
   }
 }
@@ -626,52 +647,110 @@ function isReservedExampleUrl(value) {
   }
 }
 
-function openEvidence(sourceNumber, evidence, checks) {
+function sourceDomain(source) {
+  try {
+    return new URL(source.url).hostname.replace(/^www\./i, "");
+  } catch {
+    return source.url || "Unavailable";
+  }
+}
+
+function sourceNumbersForBullet(bullet) {
+  return [...new Set([
+    ...(bullet.cites || []),
+    ...(bullet.evidence || []).map((item) => item.source_n),
+  ].map(Number).filter((number) => Number.isFinite(number) && number > 0))];
+}
+
+function renderSourceLink(source, label) {
+  const safeUrl = safeWebUrl(source.url);
+  if (safeUrl) {
+    const link = createElement("a", "", label);
+    link.href = safeUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return link;
+  }
+  const preview = createElement("button", "source-preview", label);
+  preview.type = "button";
+  preview.dataset.sourceNumber = String(source.n);
+  preview.setAttribute("aria-label", `View source details for ${source.title || `source ${source.n}`}`);
+  return preview;
+}
+
+function closeEvidenceSheet() {
+  const panel = byId("evidence-panel");
+  const restoreFocus = panel.contains(document.activeElement);
+  panel.classList.remove("is-open");
+  updateEvidencePresentation();
+  if (restoreFocus && selectedBriefClaimIndex >= 0) {
+    byId("brief-bullets").children[selectedBriefClaimIndex]
+      ?.querySelector(".brief-claim-card").focus();
+  }
+}
+
+function updateEvidencePresentation() {
+  const panel = byId("evidence-panel");
+  if (!panel) return;
+  const isMobileSheet = window.matchMedia("(max-width: 899px)").matches &&
+    panel.classList.contains("is-open");
+  byId("evidence-scrim").hidden = !isMobileSheet;
+  panel.setAttribute("role", isMobileSheet ? "dialog" : "complementary");
+  if (isMobileSheet) panel.setAttribute("aria-modal", "true");
+  else panel.removeAttribute("aria-modal");
+}
+
+function openEvidence(sourceNumber, evidence, checks, bulletIndex = null) {
   if (!briefResult) return;
   const source = (briefResult.sources || []).find((item) => item.n === sourceNumber);
   if (!source) return;
+  if (Number.isInteger(bulletIndex)) selectedBriefClaimIndex = bulletIndex;
   byId("evidence-title").textContent = source.title || `Source ${source.n}`;
   const urlNode = byId("evidence-url");
   urlNode.replaceChildren();
   const safeUrl = safeWebUrl(source.url);
   if (safeUrl) {
-    const link = createElement("a", "", source.url);
-    link.href = safeUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    urlNode.append(link);
+    urlNode.append(renderSourceLink(source, sourceDomain(source)));
   } else if (isReservedExampleUrl(source.url)) {
-    urlNode.textContent = "Offline replay source (no live article URL)";
+    urlNode.append(
+      createElement("span", "source-domain", sourceDomain(source)),
+      document.createTextNode(" · "),
+      createElement("span", "offline-replay-label", "Offline replay source (no live article URL)"),
+    );
   } else {
-    urlNode.textContent = source.url || "Unavailable";
+    urlNode.textContent = sourceDomain(source);
   }
   byId("evidence-date").textContent = source.date || "Date unavailable";
   byId("evidence-kind").textContent = source.source_kind || "Unknown";
-  const hasClaimEvidence = Boolean(evidence);
-  byId("evidence-quote-section").hidden = !hasClaimEvidence;
-  byId("evidence-checks-section").hidden = !hasClaimEvidence;
-  if (hasClaimEvidence) {
-    const quote = evidence.quote || "";
-    byId("evidence-quote").textContent = quote || "No quote was supplied.";
-    appendHighlightedQuote(byId("evidence-source-text"), source.text, quote);
-    renderEvidenceChecks(checks || evidence.checks || {});
-  } else {
-    byId("evidence-source-text").textContent = source.text || "Source text unavailable.";
-    byId("evidence-checks").replaceChildren();
-  }
-  openSidePanel("evidence-overlay", "evidence-panel", "close-evidence");
+  const quote = evidence?.quote || "";
+  byId("evidence-quote-section").hidden = !quote;
+  byId("evidence-excerpt-section").hidden = !source.text;
+  byId("evidence-checks-section").hidden = !evidence;
+  if (quote) byId("evidence-quote").textContent = quote;
+  appendHighlightedQuote(byId("evidence-excerpt"), source.text, quote);
+  appendHighlightedQuote(byId("evidence-source-text"), source.text, quote, Infinity);
+  byId("evidence-full-source").open = false;
+  renderEvidenceChecks(checks || evidence?.checks || {});
+  const panel = byId("evidence-panel");
+  panel.classList.add("is-open");
+  updateEvidencePresentation();
 }
 
-function renderRejectedClaims(result) {
+function rejectedClaimsForResult(result) {
   const audit = result.audit || {};
-  const rejected = [
+  return [
     ...(audit.rejected_claims || []),
     ...(audit.rejected_bullets || []).map((item) => ({
       claim: item.text,
       reason: item.reason,
     })),
   ];
+}
+
+function renderRejectedClaims(result) {
+  const rejected = rejectedClaimsForResult(result);
   byId("rejected-count").textContent = String(rejected.length);
+  byId("rejected-summary").textContent = `Rejected claims (${rejected.length})`;
   const groups = new Map();
   for (const item of rejected) {
     const reason = item.reason || "Unspecified";
@@ -682,7 +761,7 @@ function renderRejectedClaims(result) {
   container.replaceChildren();
   if (!groups.size) {
     container.append(createElement("p", "rejected-empty", "No claims were rejected."));
-    return;
+    return 0;
   }
   for (const [reason, items] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     const section = createElement("section", "rejected-group");
@@ -694,11 +773,134 @@ function renderRejectedClaims(result) {
         row.append(createElement("span", "red-team-label", "Red-team test claim"));
       }
       row.append(createElement("p", "", item.claim || item.text || "Claim text unavailable."));
+      const source = (result.sources || []).find((candidate) => candidate.n === item.source_n);
+      if (source) {
+        row.append(createElement(
+          "p",
+          "rejected-source-meta",
+          `${sourceDomain(source)} · ${source.date || "Date unavailable"} · ${source.source_kind || "Unknown"}`,
+        ));
+      }
       list.append(row);
     }
     section.append(list);
     container.append(section);
   }
+  return rejected.length;
+}
+
+function renderBriefClaimCard(bullet, index, sourcesByNumber) {
+  const item = createElement("li", "brief-bullet");
+  item.dataset.claimIndex = String(index);
+  const card = createElement("button", "brief-claim-card");
+  card.type = "button";
+  card.dataset.claimIndex = String(index);
+  card.setAttribute("aria-pressed", "false");
+  card.append(createElement("span", "claim-text-clamped", bullet.text || ""));
+  const citedSources = sourceNumbersForBullet(bullet)
+    .map((number) => sourcesByNumber.get(number))
+    .filter(Boolean);
+  const metadata = createElement("span", "claim-source-metadata");
+  const citations = createElement("span", "bullet-citations");
+  for (const source of citedSources) {
+    metadata.append(createElement(
+      "span",
+      "claim-source-entry",
+      `${sourceDomain(source)} · ${source.date || "Date unavailable"} · ${source.source_kind || "Unknown"}`,
+    ));
+    const footnote = createElement("button", "source-footnote", `[${source.n}]`);
+    footnote.type = "button";
+    footnote.dataset.sourceNumber = String(source.n);
+    footnote.dataset.bulletIndex = String(index);
+    footnote.setAttribute("aria-label", `Open source ${source.n} evidence for claim ${index + 1}`);
+    citations.append(footnote);
+  }
+  if (!citedSources.length) {
+    metadata.append(createElement("span", "claim-source-entry", "Source unavailable"));
+  }
+  const checks = bullet.checks || {};
+  const passed = Object.values(checks).filter((value) => value === true).length;
+  const chip = createElement("button", "verification-chip", `✓ Verified · ${passed}/${Object.keys(checkLabels).length}`);
+  chip.type = "button";
+  chip.dataset.bulletIndex = String(index);
+  chip.setAttribute("aria-label", `Open verification evidence, ${passed} of ${Object.keys(checkLabels).length} checks passed`);
+  const expand = createElement("button", "claim-expand", "Show more");
+  expand.type = "button";
+  expand.dataset.expandClaim = String(index);
+  item.append(card, metadata, citations, chip, expand);
+  return item;
+}
+
+function selectBriefClaim(index, sourceNumber = null, focusCard = false) {
+  const bullet = briefResult?.bullets?.[index];
+  if (!bullet) return;
+  selectedBriefClaimIndex = index;
+  for (const [cardIndex, item] of [...byId("brief-bullets").children].entries()) {
+    const selected = cardIndex === index;
+    item.classList.toggle("is-selected", selected);
+    item.querySelector(".brief-claim-card").setAttribute("aria-pressed", String(selected));
+  }
+  const sourceNumbers = sourceNumbersForBullet(bullet);
+  const selectedSource = sourceNumber !== null && sourceNumber !== undefined &&
+    Number.isFinite(Number(sourceNumber))
+    ? Number(sourceNumber)
+    : sourceNumbers[0];
+  const evidence = evidenceForBullet(bullet, selectedSource);
+  openEvidence(
+    selectedSource ?? evidence?.source_n,
+    evidence,
+    evidence?.checks || bullet.checks,
+    index,
+  );
+  if (focusCard) {
+    byId("brief-bullets").children[index]?.querySelector(".brief-claim-card").focus();
+  }
+}
+
+function renderBriefSources(result, bullets) {
+  const sourcesList = byId("brief-sources");
+  sourcesList.replaceChildren();
+  const sources = Array.isArray(result.sources) ? result.sources : [];
+  byId("brief-source-summary").textContent = `Sources (${sources.length})`;
+  byId("brief-source-details").open = false;
+  byId("brief-source-section").hidden = sources.length === 0;
+  if (!sources.length) return;
+
+  const counts = new Map(sources.map((source) => [source.n, new Set()]));
+  bullets.forEach((bullet, index) => {
+    for (const sourceNumber of sourceNumbersForBullet(bullet)) {
+      counts.get(sourceNumber)?.add(`verified-${index}`);
+    }
+  });
+  rejectedClaimsForResult(result).forEach((claim, index) => {
+    counts.get(claim.source_n)?.add(`rejected-${index}`);
+  });
+
+  const table = createElement("table", "sources-table");
+  const head = createElement("thead");
+  const headerRow = createElement("tr");
+  for (const label of ["Domain", "Title", "Date", "Kind", "Claims"]) {
+    const cell = createElement("th", "", label);
+    cell.scope = "col";
+    headerRow.append(cell);
+  }
+  head.append(headerRow);
+  const body = createElement("tbody");
+  for (const source of sources) {
+    const row = createElement("tr");
+    const domain = createElement("td");
+    domain.append(renderSourceLink(source, sourceDomain(source)));
+    row.append(
+      domain,
+      createElement("td", "source-table-title", source.title || `Source ${source.n}`),
+      createElement("td", "", source.date || "Date unavailable"),
+      createElement("td", "", source.source_kind || "Unknown"),
+      createElement("td", "source-claim-count", String(counts.get(source.n)?.size || 0)),
+    );
+    body.append(row);
+  }
+  table.append(head, body);
+  sourcesList.append(table);
 }
 
 function renderBriefResult(result) {
@@ -716,30 +918,17 @@ function renderBriefResult(result) {
       : "No synthesized bullet passed verification.";
   }
   list.hidden = bullets.length === 0;
+  const sourcesByNumber = new Map((result.sources || []).map((source) => [source.n, source]));
   for (const [index, bullet] of bullets.entries()) {
-    const item = createElement("li", "brief-bullet");
-    const text = createElement("p", "brief-bullet-text", bullet.text || "");
-    item.append(text);
-    const citations = createElement("span", "bullet-citations");
-    for (const sourceNumber of bullet.cites || []) {
-      const footnote = createElement("button", "source-footnote", `[${sourceNumber}]`);
-      footnote.type = "button";
-      footnote.dataset.sourceNumber = String(sourceNumber);
-      footnote.dataset.bulletIndex = String(index);
-      footnote.setAttribute("aria-label", `Open source ${sourceNumber} evidence`);
-      citations.append(footnote);
-    }
-    text.append(citations);
-    const checks = bullet.checks || {};
-    const passed = Object.values(checks).filter((value) => value === true).length;
-    const chip = createElement("button", "verification-chip", `✓ Verified · ${passed}/${Object.keys(checkLabels).length} checks`);
-    chip.type = "button";
-    chip.dataset.bulletIndex = String(index);
-    chip.dataset.openEvidence = "true";
-    chip.setAttribute("aria-label", `Open verification evidence, ${passed} of ${Object.keys(checkLabels).length} checks passed`);
-    item.append(chip);
-    list.append(item);
+    list.append(renderBriefClaimCard(bullet, index, sourcesByNumber));
   }
+  for (const item of list.children) {
+    const text = item.querySelector(".claim-text-clamped");
+    item.querySelector(".claim-expand").hidden = text.scrollHeight <= text.clientHeight + 1;
+  }
+  const rejectedCount = renderRejectedClaims(result);
+  byId("brief-rejected").hidden = rejectedCount === 0;
+  renderBriefSources(result, bullets);
 
   const questionList = byId("open-question-list");
   questionList.replaceChildren();
@@ -754,34 +943,20 @@ function renderBriefResult(result) {
     questionList.append(item);
   }
   byId("open-questions").hidden = questionList.childElementCount === 0;
-
-  const sourcesList = byId("brief-sources");
-  sourcesList.replaceChildren();
-  for (const source of result.sources || []) {
-    const item = createElement("li");
-    const safeUrl = safeWebUrl(source.url);
-    if (safeUrl) {
-      const link = createElement("a", "", source.title || source.url || `Source ${source.n}`);
-      link.href = safeUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      item.append(link);
-    } else {
-      const preview = createElement(
-        "button",
-        "source-preview",
-        source.title || source.url || `Source ${source.n}`,
-      );
-      preview.type = "button";
-      preview.dataset.sourceNumber = String(source.n);
-      preview.setAttribute("aria-label", `View source details for ${source.title || `source ${source.n}`}`);
-      item.append(preview);
-    }
-    item.append(document.createTextNode(` — ${source.date || "date unavailable"} · ${source.source_kind || "source"}`));
-    sourcesList.append(item);
+  selectedBriefClaimIndex = -1;
+  if (bullets.length) selectBriefClaim(0);
+  else {
+    closeEvidenceSheet();
+    byId("evidence-title").textContent = "Select a claim";
+    byId("evidence-url").textContent = "Select a claim to inspect its evidence.";
+    byId("evidence-date").textContent = "—";
+    byId("evidence-kind").textContent = "—";
+    byId("evidence-quote-section").hidden = true;
+    byId("evidence-excerpt-section").hidden = true;
+    byId("evidence-checks-section").hidden = true;
+    byId("evidence-excerpt").replaceChildren();
+    byId("evidence-source-text").replaceChildren();
   }
-  byId("brief-source-section").hidden = sourcesList.childElementCount === 0;
-  renderRejectedClaims(result);
   byId("brief-actions").hidden = false;
 }
 
@@ -846,48 +1021,6 @@ async function copyBriefMarkdown() {
   }
 }
 
-function openSidePanel(overlayId, panelId, closeButtonId) {
-  closeSidePanel();
-  sidePanelPreviousFocus = document.activeElement;
-  activeSidePanel = { overlayId, panelId, closeButtonId };
-  byId(overlayId).hidden = false;
-  byId(closeButtonId).focus();
-}
-
-function closeSidePanel() {
-  if (!activeSidePanel) return;
-  byId(activeSidePanel.overlayId).hidden = true;
-  activeSidePanel = null;
-  if (sidePanelPreviousFocus?.isConnected) sidePanelPreviousFocus.focus();
-  sidePanelPreviousFocus = null;
-}
-
-function trapSidePanelFocus(event) {
-  if (!activeSidePanel) return;
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeSidePanel();
-    return;
-  }
-  if (event.key !== "Tab") return;
-  const panel = byId(activeSidePanel.panelId);
-  const focusable = [...panel.querySelectorAll("button:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])")];
-  if (!focusable.length) {
-    event.preventDefault();
-    panel.focus();
-    return;
-  }
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
-
 function evidenceForBullet(bullet, sourceNumber) {
   const evidence = bullet.evidence || [];
   return evidence.find((item) => item.source_n === sourceNumber) || evidence[0] || null;
@@ -939,13 +1072,13 @@ function handleResult(result) {
   if (result.mode === "brief") {
     renderBriefResult(result);
   } else {
+    closeEvidenceSheet();
     byId("brief-result").hidden = true;
     byId("brief-actions").hidden = true;
     renderFixResult(result);
   }
   updateOutcomeStats(result);
   showMeasuredSavings(result, receipt);
-  closeSidePanel();
   closeApprovalDrawer();
   setRunState("done");
   closeStream();
@@ -1785,35 +1918,52 @@ for (const tab of [byId("brief-tab"), byId("fix-tab")]) {
 byId("run-form").addEventListener("submit", startRun);
 byId("cancel-run").addEventListener("click", cancelRun);
 byId("brief-bullets").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-bullet-index]");
-  if (!button || !briefResult) return;
-  const bullet = briefResult.bullets[Number(button.dataset.bulletIndex)];
-  if (!bullet) return;
-  const evidence = evidenceForBullet(
-    bullet,
-    Number(button.dataset.sourceNumber || bullet.evidence?.[0]?.source_n),
-  );
-  const sourceNumber = Number(button.dataset.sourceNumber || evidence?.source_n);
-  if (!Number.isFinite(sourceNumber)) return;
-  openEvidence(
-    sourceNumber,
-    evidence,
-    button.dataset.openEvidence ? bullet.checks : evidence?.checks,
-  );
+  const item = event.target.closest(".brief-bullet");
+  if (!item || !briefResult) return;
+  const index = Number(item.dataset.claimIndex);
+  const expand = event.target.closest("[data-expand-claim]");
+  if (expand) {
+    const card = item.querySelector(".brief-claim-card");
+    const expanded = card.classList.toggle("is-expanded");
+    expand.textContent = expanded ? "Show less" : "Show more";
+    return;
+  }
+  const footnote = event.target.closest(".source-footnote");
+  if (footnote) {
+    selectBriefClaim(index, Number(footnote.dataset.sourceNumber), true);
+    return;
+  }
+  if (event.target.closest(".brief-claim-card, .verification-chip")) {
+    selectBriefClaim(index, null, false);
+  }
+});
+byId("brief-bullets").addEventListener("keydown", (event) => {
+  const item = event.target.closest(".brief-bullet");
+  if (!item || !briefResult || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+  const current = Number(item.dataset.claimIndex);
+  const direction = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 1;
+  const next = Math.max(0, Math.min(briefResult.bullets.length - 1, current + direction));
+  event.preventDefault();
+  selectBriefClaim(next, null, true);
 });
 byId("show-rejected").addEventListener("click", () => {
-  openSidePanel("rejected-overlay", "rejected-panel", "close-rejected");
+  const disclosure = byId("brief-rejected");
+  if (disclosure.hidden) return;
+  disclosure.open = true;
+  disclosure.querySelector("summary").focus();
 });
-byId("close-evidence").addEventListener("click", closeSidePanel);
-byId("close-rejected").addEventListener("click", closeSidePanel);
-for (const overlayId of ["evidence-overlay", "rejected-overlay"]) {
-  byId(overlayId).addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) closeSidePanel();
-  });
-}
+byId("close-evidence").addEventListener("click", closeEvidenceSheet);
+byId("evidence-scrim").addEventListener("click", closeEvidenceSheet);
 byId("copy-markdown").addEventListener("click", copyBriefMarkdown);
 byId("print-brief").addEventListener("click", () => window.print());
-document.addEventListener("keydown", trapSidePanelFocus);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !activeApproval &&
+      window.matchMedia("(max-width: 899px)").matches &&
+      byId("evidence-panel").classList.contains("is-open")) {
+    event.preventDefault();
+    closeEvidenceSheet();
+  }
+});
 byId("deny-approval").addEventListener("click", () => submitApproval("denied", false));
 byId("approve-once").addEventListener("click", () => submitApproval("approved", true));
 byId("approve-run").addEventListener("click", () => submitApproval("approved", false));
