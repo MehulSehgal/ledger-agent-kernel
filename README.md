@@ -1,10 +1,157 @@
-# ledger-agent-kernel
+# Ledger Agent Kernel
 
-Deterministic agent execution kernel with verifiable live receipts, strict local-only routing for confidential repositories, and configurable token budgets.
+Ledger is an evidence-first agent workspace for research and repository
+maintenance. It makes model use, source checks, token metering, policy
+decisions, approvals, and run events visible instead of hiding them behind a
+single opaque agent response.
 
-## Jump-Start Demo Highlights
+The project is designed for teams that need useful automation without giving
+unreviewed model output permission to change files or make unsupported claims.
 
-- **Default Token Budget (`100`):** All Jump-Start demo presets (`Board prep`, `Market scan`, `Private review`) and the live receipt initialize with a `100`-token budget.
-- **Strict Local-Only Routing:** Selecting **`⌁ Private review`** (or any `confidential` payload) locks execution to `local://ledger-ollama-runtime` and blocks external cloud fallbacks.
-- **Real-Time Non-Zero Receipts:** Every execution emits immutable receipt updates across `routing` (`102`), `running` (`104`), and `settled` (`200`) stages without resetting `liveCodeCount` or `tokensUsed` to `0`.
-- **Confidential Repository Diff Output:** Running **`⌁ Private review`** preserves and renders the unified `diff --git` patch in the output panel with inline secret redaction.
+## What it is
+
+The application has primary workflows:
+
+- **Brief** gathers sources, checks claims against retrieved evidence, and exposes the checks and excerpts in the interface.
+- **Fix** copies an allowed repository into a sandbox, localizes test failures, and proposes edits. Running tests, applying the final diff, and committing require separate policy approvals.
+
+The policy engine, rather than model output or repository content, decides whether an action is allowed, needs approval, or is denied. Confidential repositories are classified in code and routed only to configured local providers.
+
+## Why it matters
+
+Ledger treats evidence and authorization as first-class outputs:
+
+- claims retain source links, dates, quotes, and rejection reasons;
+- model calls retain tier, token usage, budget, and cost receipts;
+- repository changes are prepared in a sandbox and gated before write access;
+- confidential work is blocked from non-local providers by application policy;
+- run events make approvals, cancellations, failures, and outcomes inspectable.
+
+## Status
+
+| Capability | Status | Notes |
+|---|---|---|
+| Offline Brief and claim-evidence interface | Done | Supports local replay and source previews. Live retrieval requires service configuration. |
+| Sandboxed Fix and approval flow | Done | Changes are prepared in a sandbox; real-repository writes require approval. |
+| Confidential local-only routing | Done | Enforced by application code; prompt and repository text cannot lower protection. |
+| Red-team runner and interface | Done | Scenarios execute through the local application paths and report their evidence. |
+| Benchmark runner and summarizer | Done | Produces run records and a summary when invoked. |
+| Bifrost and Tavily live connectivity |done | Requires configured endpoints and credentials; no live response record is included in this submission. |
+| Recorded benchmark results | Done | Offline Ledger and baseline arms each passed 3/3 toy trials; see `bench/results/summary.json`. |
+| Green full test suite | Done | `python -m pytest -q` passes locally; live provider behavior remains unverified. |
+| GitHub Actions workflow | Done | Configured to run the test suite on pushes; remote execution has not been observed. |
+
+No live integration is marked verified live. The status table distinguishes
+implemented paths from externally validated service behavior.
+
+## Final submission summary
+
+This submission demonstrates the complete local workflow: evidence-backed
+Brief generation, deterministic claim checks, sandboxed Fix planning, approval
+gates, confidential routing policy, red-team scenarios, benchmark reporting,
+and a deployable frontend/backend split. Offline mode is intentionally
+available so the product can be evaluated without provider credentials.
+
+Live provider behavior, external deployment health, and authenticated user
+identity are not claimed unless they are documented as verified evidence.
+
+## Architecture
+
+```mermaid
+flowchart TD
+  browser[Vanilla JavaScript UI] --> server[FastAPI server]
+  server --> modes[Brief workflow]
+  server --> fixer[Fix workflow]
+  modes --> kernel[Shared kernel and meter]
+  fixer --> policy[Policy and approvals]
+  fixer --> sandbox[Temporary repository copy]
+  kernel --> router[Model router]
+  router --> bifrost[Bifrost gateway]
+  modes --> tavily[Tavily search and extract]
+  fixer --> tavily
+```
+
+The browser consumes run events from the server. Brief and Fix share metering and routing, while policy decisions and approvals guard actions that can change files or reach external services.
+
+## Windows quickstart
+
+Use PowerShell from the repository directory:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn server:app --reload
+```
+
+Open the localhost address printed by Uvicorn. Without service credentials, use the offline paths for a local walkthrough. Keep the server process open while using the page.
+
+## Split deployment
+
+The repository is organized for a split deployment:
+
+- **Backend:** repository root, [`server.py`](server.py), [`requirements.txt`](requirements.txt), [`Dockerfile`](Dockerfile), and [`fly.toml.example`](fly.toml.example). Deploy this service to Fly.io.
+- **Frontend:** [`static/`](static/). Set `static` as the Vercel project root or publish directory on another static host.
+- **Connection:** set `window.LEDGER_API_URL` in [`static/runtime-config.js`](static/runtime-config.js) to the backend URL, then set the frontend origin in `LEDGER_CORS_ORIGINS` on the backend.
+
+See the step-by-step Fly.io and Vercel settings in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+The root `vercel.json` remains available for a simple serverless preview, but the split deployment is recommended because the in-memory run timeline and long-running Fix workflows need a persistent ASGI process. Persistent production deployment is not done on Vercel, and live provider behavior is not verified live here.
+
+## Environment variables
+
+Unset variables use the defaults documented by the code where applicable. Secret values must be supplied through the process environment and must not be committed.
+
+| Variable | Purpose |
+|---|---|
+| `BIFROST_URL` | Base URL for the configured Bifrost gateway. |
+| `BIFROST_VK` | General Bifrost virtual key when a user-specific key is not configured. |
+| `LEDGER_VK_<USER>` | Optional virtual key selected for a user. |
+| `LEDGER_CHEAP`, `LEDGER_STRONG` | Default model identifiers for the cheap and strong tiers. |
+| `LEDGER_CHAIN_CHEAP`, `LEDGER_CHAIN_STRONG` | Ordered model chains for the corresponding tiers. |
+| `BIFROST_VK_LOCAL` | Virtual key used for confidential local-model requests. |
+| `LEDGER_LOCAL_CHAIN` | Ordered model chain used for confidential requests. |
+| `LOCAL_PROVIDERS` | Provider allowlist used by the confidential egress guard. |
+| `TAVILY_API_KEY` | Credential for Tavily search and extraction. |
+| `LEDGER_TAVILY_CREDIT_CAP` | Optional positive integer. Stops local Tavily calls when this many estimated credits have been spent in the current process. Tavily's usage endpoint, called by `smoke.py`, is the authoritative balance; see `docs/LINKS.md` for the credit rules. |
+| `LEDGER_GITHUB_OWNERS` | Comma-separated GitHub users or organisations whose public repositories Fix may clone from a pasted link. Unset disables GitHub links; an asterisk allows any owner, which runs strangers' tests on your server, so avoid it on a public deployment. |
+| `LEDGER_CLONE_ROOT` | Optional scratch folder for temporary clones. Clones are deleted when the run ends. |
+| `LEDGER_ALLOWED_ROOTS` | Path-separated roots within which Fix may accept repositories. |
+| `LEDGER_USER_CAP` | Positive per-user token cap. |
+| `LEDGER_BUDGET_FILE` | Optional path for the persisted per-user budget ledger. `LEDGER_USAGE_FILE` remains a compatibility fallback. |
+| `LEDGER_OFFLINE_STUB` | Enables the explicitly labeled offline patch stub for the toy task. |
+| `LEDGER_DEMO` | Enables demo-only routing and chaos hooks. |
+| `LEDGER_MODEL_CHEAP` | Model identifier used by the standalone service smoke check. |
+
+On Windows, path-separated root values use the platform path separator. Configure confidential routing with local providers and a local key; a cloud provider is rejected by the egress guard.
+
+## Bifrost and Tavily call sites
+
+- Model requests flow through `kernel.chat()` into `router.complete()` in [router.py](router.py). The router sends the chat-completion request to `BIFROST_URL`; it selects configured model chains, attaches the applicable virtual key, records usage, and blocks non-local providers for confidential runs.
+- Brief's live source collection calls `kernel.tavily_news()` and `kernel.tavily_extract()` from [modes.py](modes.py). These functions in [kernel.py](kernel.py) send search and extraction requests to Tavily. Confidential Brief runs do not use Tavily.
+- For eligible non-confidential API-style Fix errors, [fixer.py](fixer.py) can request API documentation through the same Tavily search and extraction helpers. The query and network action are policy-gated.
+- [smoke.py](smoke.py) is a separate manual connectivity check for configured Bifrost and Tavily services; it is not required for offline use.
+
+Provider documentation and source links are collected in [docs/LINKS.md](docs/LINKS.md). The implementation's actual request behavior is defined by the code paths above.
+
+## Reproducing the benchmark
+
+Benchmark tasks are declared under `bench/tasks/`. Run the configured benchmark arms, then summarize the recorded trials:
+
+```powershell
+python -m bench run
+python -m bench summarize
+```
+
+The runner appends trial records to `bench/results/runs.jsonl`; summarization writes `bench/results/summary.json`. The benchmark endpoint and interface read that generated summary. No outcome, cost, or confidence interval should be quoted until the file exists and has been inspected.
+
+## AI-tool disclosure
+
+Claude and GitHub Copilot were used as development aids. Generated code and documentation require maintainer review; tool output is not treated as authorization or evidence.
+
+## Limitations
+
+- All tests pass locally; the recorded benchmark summary is the offline seeded result in `bench/results/summary.json`.
+- Live Bifrost and Tavily behavior is verified only where documented in `docs/REAL_RESPONSES.md`; no such live response record is present yet.
+- Per-user budgets are identified by the `X-Ledger-User` header and are not authenticated.
+- The offline patch stub is limited to the toy benchmark task and is not a substitute for a configured model.
+- Retrieved web text, repository files, and model output are untrusted inputs; the system still depends on correct policy configuration and human approval for gated actions.
