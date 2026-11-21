@@ -45,3 +45,25 @@ def test_brief_result_reports_confidential_and_web_off(tmp_path, monkeypatch):
 
     standard = modes.run_brief("Acme", "Planning", confidential=False, repo_root=tmp_path)
     assert standard["confidential"] is False
+
+
+def test_status_reports_local_routing_and_price_facts(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import server
+
+    for name in ("LEDGER_LOCAL_CHAIN", "LOCAL_PROVIDERS", "BIFROST_URL", "BIFROST_VK_LOCAL"):
+        monkeypatch.delenv(name, raising=False)
+    client = TestClient(server.app)
+    body = client.get("/api/status").json()
+    assert body["local_models"] is False
+    assert isinstance(body["prices_verified"], bool)
+
+    monkeypatch.setenv("LEDGER_LOCAL_CHAIN", "ollama/llama3")
+    monkeypatch.setenv("LOCAL_PROVIDERS", "ollama")
+    monkeypatch.setenv("BIFROST_URL", "http://gateway.invalid")
+    monkeypatch.setenv("BIFROST_VK_LOCAL", "local-key")
+    assert client.get("/api/status").json()["local_models"] is True
+
+    monkeypatch.setenv("LOCAL_PROVIDERS", "someone-else")
+    assert client.get("/api/status").json()["local_models"] is False
