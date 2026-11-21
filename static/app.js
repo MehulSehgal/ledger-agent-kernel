@@ -2,6 +2,7 @@ const byId = (id) => document.getElementById(id);
 const API_BASE = String(globalThis.LEDGER_API_URL || "").replace(/\/+$/, "");
 const apiUrl = (path) => `${API_BASE}${path}`;
 const DEFAULT_TOKEN_BUDGET = 100;
+const METER_GUIDANCE = "80%: strong calls may degrade. 100%: calls stop.";
 const terminalStates = new Set(["done", "error", "cancelled"]);
 const eventNames = [
   "step", "model_call", "claim", "budget", "failover", "approval_request",
@@ -97,6 +98,7 @@ function resetRunView() {
   byId("blocked-count").hidden = true;
   byId("failover-banner").hidden = true;
   byId("run-id").textContent = "";
+  byId("account-budget").hidden = true;
   byId("call-list").replaceChildren(createElement("li", "muted", "No calls yet"));
   byId("price-warning").hidden = true;
   byId("live-usd").textContent = "—";
@@ -143,6 +145,19 @@ function updateMeter(used, cap) {
   byId("meter-fill").style.width = `${percent}%`;
   byId("meter-track").setAttribute("aria-valuemax", String(budgetCap));
   byId("meter-track").setAttribute("aria-valuenow", String(totalUsed));
+  byId("meter-guidance").textContent = totalUsed >= budgetCap
+    ? "Token budget reached: new model calls stop."
+    : METER_GUIDANCE;
+}
+
+function updateAccountBudget(used, cap) {
+  const note = byId("account-budget");
+  if (!Number.isFinite(Number(used)) || !Number.isFinite(Number(cap))) {
+    note.hidden = true;
+    return;
+  }
+  note.textContent = `Account total: ${formatNumber(used)} of ${formatNumber(cap)} tokens`;
+  note.hidden = false;
 }
 
 function setPriceWarning() {
@@ -735,7 +750,10 @@ function parseEvent(event) {
   if (type === "step") handleStep(data, timestamp);
   else if (type === "model_call") handleModelCall(data, sequence || Date.now());
   else if (type === "claim") handleClaim(data, sequence || Date.now());
-  else if (type === "budget") updateMeter(data.used, data.cap);
+  else if (type === "budget") {
+    updateMeter(data.run_used ?? data.used, data.run_cap ?? data.cap);
+    updateAccountBudget(data.used, data.cap);
+  }
   else if (type === "failover") handleFailover(data);
   else if (type === "approval_request") queueApproval(data);
   else if (type === "approval_result") handleApprovalResult(data);
