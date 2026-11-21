@@ -9,3 +9,7 @@
 - Keep diffs small and limited to files named in the task. Do not reformat unrelated code.
 - After changes, run `python -m pytest -q` and report the result.
 - Follow the streaming event contract in `docs/events.md`.
+
+# Frontend contract
+
+Frontend contract (tests read these): static/index.html must keep id="redteam-tab", id="benchmark-tab", id="run-redteam". static/app.js must keep the strings "/api/redteam", "/api/bench/summary", createElementNS, isReservedExampleHost, source-preview, "Offline replay source", and byId("brief-sources").addEventListener("click". Keep every id that app.js references, or update both sides consistently. Do not edit tests; if a redesign makes a test impossible, stop and tell me.
