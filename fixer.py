@@ -729,6 +729,7 @@ def _run_fix_inner(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         confidential_requested=confidential,
     )
     confidential = meter.refresh_confidential(confidential)
+    show_diff = not confidential or confidential_diff_visible(root)
     chat_fn = chat_fn or chat
     live_fn = live_fn or live_llm
     test_runner = test_runner or _run_test_command
@@ -775,7 +776,7 @@ def _run_fix_inner(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         if changes:
             if confidential:
                 result.update(_confidential_change_summary(changes))
-            else:
+            if show_diff:
                 result["diff"] = "".join(item["diff"] for item in changes.values())
         run.emit("result", result)
         return result
@@ -1028,7 +1029,7 @@ def _run_fix_inner(repo_path=None, task=None, test_cmd=None, cap=6000, run=None,
         if not _authorize_action(
             run, policy, write_action, "Apply the verified diff to the repository",
             "This writes changed files to the real repository.",
-            confidential=confidential,
+            confidential=confidential and not show_diff,
         ):
             return finish(
                 "partial",
