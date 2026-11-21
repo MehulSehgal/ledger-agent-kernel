@@ -15,7 +15,7 @@ from pathlib import Path
 
 import github_source
 from kernel import BudgetExhausted, Meter, chat, live_llm, tavily_extract, tavily_news, tok
-from policy import Action, PolicyEngine
+from policy import Action, PolicyEngine, classify_confidential
 from runs import NULL_RUN
 
 
@@ -578,6 +578,20 @@ def _confidential_change_summary(changes):
         "symbols": sorted(symbols),
         "diff_hash": hashlib.sha256(diff.encode("utf-8")).hexdigest(),
     }
+
+
+def confidential_diff_visible(root):
+    """May a confidential Fix show its diff to the person who started the run?
+
+    Yes by default, because the diff goes back to whoever supplied the
+    repository. LEDGER_CONFIDENTIAL_DIFF=off returns only a hash and the
+    changed symbols. A repository that carries its own confidential policy
+    file (.ledger/policy.json) always stays hash-only.
+    """
+    setting = os.getenv("LEDGER_CONFIDENTIAL_DIFF", "on").strip().lower()
+    if setting in {"0", "off", "false", "no"}:
+        return False
+    return not classify_confidential(root, False)
 
 
 def _apply_changes(root, changes, original, policy):
