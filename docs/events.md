@@ -29,7 +29,7 @@ polling does not include missed event payloads.
 | `step` | `id`, `title`, `status` (`running`, `ok`, `fail`, or `skipped`), `detail`; clients may derive duration from event timestamps |
 | `model_call` | `label`, `tier` (`local`, `cheap`, or `strong`), `model`, `tokens_in`, `tokens_out`, `tokens_cached` (null if unreported), `usd` (null if unavailable), `cached` |
 | `failover` | `from`, `to`, `reason` (may be `chaos (simulated)`) |
-| `budget` | `used`, `cap`, `pct`, `state` (`ok`, `degraded`, or `exhausted`), `user` |
+| `budget` | `used`, `cap`, `pct`, `state` (`ok`, `degraded`, or `exhausted`), `user`, `run_used`, `run_cap`; with a user id, `used` and `cap` describe the account total and `run_used` and `run_cap` the run's own token budget |
 | `claim` | `id`, `text`, `status` (`verified` or `rejected`), `reason`, `source_n`, `quote`, `url`, `date` |
 | `approval_request` | `hash`, `kind` (`WRITE`, `SHELL`, `GIT`, or `NETWORK`), `summary`, `payload`, `risk`; WRITE payloads may include a unified diff, SHELL payloads the argv and execution details, NETWORK payloads the exact query |
 | `approval_result` | `hash`, `decision` (`approved` or `denied`), `once` |
@@ -88,3 +88,10 @@ The red-team screen displays every scenario, its checks, and its evidence.
 404 when no summary exists. The benchmark screen displays every recorded arm,
 cost per verified outcome, and pass rate with its 95% Wilson interval; arms
 below the baseline remain visible and are marked in red with their delta.
+
+`result.confidential` is true when the run was confidential, whether the
+request asked for it or the repository's own policy did. Confidential runs
+report their model calls with the `local` tier. A confidential Fix result keeps
+`symbols` and `diff_hash`, and also carries `diff` unless
+`LEDGER_CONFIDENTIAL_DIFF=off` is set or the repository has its own
+confidential policy file. See `docs/PRICING.md` for how `usd` is decided.
