@@ -41,6 +41,9 @@ let activeSidePanel = null;
 let sidePanelPreviousFocus = null;
 let briefResult = null;
 let requestPending = false;
+let toastTimer = null;
+let compactWorkspaceMedia = null;
+let fixRetestComplete = false;
 const timelineRows = new Map();
 const modelCalls = [];
 
@@ -66,6 +69,112 @@ function setMode(nextMode) {
   byId("fix-fields").hidden = briefSelected;
   byId("start-run").textContent = briefSelected ? "Start brief" : "Start fix";
   byId("token-budget").value = String(DEFAULT_TOKEN_BUDGET);
+  renderStepper();
+}
+
+const briefSteps = [
+  ["sources", "Search"],
+  ["extract", "Extract"],
+  ["claims", "Verify"],
+  ["synthesize", "Synthesize"],
+];
+const fixSteps = [
+  ["tests", "Tests"],
+  ["locate", "Locate"],
+  ["patch", "Patch"],
+  ["retest", "Re-test"],
+  ["approve", "Approve"],
+];
+
+function renderStepper() {
+  const steps = mode === "brief" ? briefSteps : fixSteps;
+  const list = byId("run-stepper");
+  list.replaceChildren();
+  list.setAttribute("aria-label", `${mode === "brief" ? "Brief" : "Fix"} progress`);
+  for (const [index, [stepId, label]] of steps.entries()) {
+    const item = createElement("li", "stepper-step");
+    item.dataset.stepId = stepId;
+    const marker = createElement("span", "stepper-marker", "");
+    marker.dataset.stepNumber = String(index + 1);
+    item.append(
+      marker,
+      createElement("span", "stepper-label", label),
+      createElement("span", "stepper-status", "Waiting"),
+    );
+    list.append(item);
+  }
+}
+
+function updateStepperStep(stepId, status) {
+  const steps = [...byId("run-stepper").querySelectorAll(".stepper-step")];
+  const index = steps.findIndex((step) => step.dataset.stepId === stepId);
+  if (index < 0) return;
+  for (let prior = 0; prior < index; prior += 1) {
+    const item = steps[prior];
+    if (!item.classList.contains("is-failed")) {
+      item.classList.remove("is-active");
+      item.classList.add("is-complete");
+      item.querySelector(".stepper-status").textContent = "Done";
+    }
+  }
+  const current = steps[index];
+  current.classList.remove("is-active", "is-complete", "is-failed");
+  current.classList.add(
+    status === "running" ? "is-active" : status === "ok" ? "is-complete" : "is-failed",
+  );
+  current.querySelector(".stepper-status").textContent =
+    status === "running" ? "In progress" : status === "ok" ? "Done" : "Needs attention";
+  current.setAttribute("aria-current", status === "running" ? "step" : "false");
+}
+
+function setWorkspaceTab(tabName) {
+  const resultSelected = tabName === "result";
+  byId("result-tab").setAttribute("aria-selected", String(resultSelected));
+  byId("activity-tab").setAttribute("aria-selected", String(!resultSelected));
+  byId("result-tab").tabIndex = resultSelected ? 0 : -1;
+  byId("activity-tab").tabIndex = resultSelected ? -1 : 0;
+  byId("result-tab").classList.toggle("is-active", resultSelected);
+  byId("activity-tab").classList.toggle("is-active", !resultSelected);
+  byId("result-view").hidden = !resultSelected;
+  byId("activity-view").hidden = resultSelected;
+}
+
+function setWorkspaceLoading(loading) {
+  byId("workspace-skeleton").hidden = !loading;
+  if (loading) {
+    byId("workspace-empty").hidden = true;
+  }
+}
+
+function setControlsCollapsed(collapsed) {
+  const workspace = byId("workspace-grid");
+  const button = byId("collapse-controls");
+  workspace.classList.toggle("is-controls-collapsed", collapsed);
+  button.setAttribute("aria-expanded", String(!collapsed));
+  button.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} run form`);
+  button.title = `${collapsed ? "Expand" : "Collapse"} run form`;
+  button.querySelector(".collapse-controls-icon").textContent = collapsed ? "›" : "‹";
+  button.querySelector(".collapse-controls-label").textContent = collapsed ? "Form" : "Run form";
+}
+
+function initializeWorkspaceLayout() {
+  compactWorkspaceMedia = window.matchMedia("(max-width: 1100px)");
+  setControlsCollapsed(compactWorkspaceMedia.matches);
+  compactWorkspaceMedia.addEventListener("change", (event) => {
+    setControlsCollapsed(event.matches);
+  });
+}
+
+function showToast(message, kind = "info") {
+  const toast = byId("toast");
+  toast.textContent = String(message || "Something went wrong.");
+  toast.dataset.kind = kind;
+  toast.hidden = false;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+    toastTimer = null;
+  }, 5000);
 }
 
 function createElement(tag, className, text) {
@@ -90,11 +199,19 @@ function resetRunView() {
   priceUnverified = false;
   blockedCount = 0;
   briefResult = null;
+  fixRetestComplete = false;
   byId("timeline-empty")?.remove();
   byId("timeline").replaceChildren();
+  const emptyTimeline = createElement("li", "timeline-empty", "No run activity yet.");
+  emptyTimeline.id = "timeline-empty";
+  byId("timeline").append(emptyTimeline);
   byId("brief-result").hidden = true;
   byId("brief-actions").hidden = true;
   byId("fix-result").hidden = true;
+  byId("workspace-empty").hidden = false;
+  setWorkspaceLoading(false);
+  setWorkspaceTab("result");
+  byId("activity-details").open = false;
   byId("brief-bullets").replaceChildren();
   byId("open-question-list").replaceChildren();
   byId("brief-sources").replaceChildren();
@@ -104,6 +221,7 @@ function resetRunView() {
   byId("blocked-count").hidden = true;
   byId("failover-banner").hidden = true;
   byId("run-id").textContent = "";
+  byId("activity-run-id").textContent = "";
   byId("account-budget").hidden = true;
   byId("call-list").replaceChildren(createElement("li", "muted", "No calls yet"));
   byId("price-warning").hidden = true;
@@ -120,6 +238,7 @@ function resetRunView() {
   updateMeter(0, Number(byId("token-budget").value) || budgetCap);
   closeSidePanel();
   closeApprovalDrawer();
+  renderStepper();
 }
 
 function updateOutcomeStats(result = null) {
@@ -134,6 +253,15 @@ function updateOutcomeStats(result = null) {
   byId("stat-sources").textContent = formatNumber(sources);
   byId("stat-tokens").textContent = formatNumber(receipt.tokens || totalUsed);
   byId("stat-rejected").textContent = formatNumber(rejected);
+  const totalClaims = verified + rejected;
+  const verifiedPercent = totalClaims ? verified / totalClaims * 100 : 0;
+  const rejectedPercent = totalClaims ? rejected / totalClaims * 100 : 0;
+  byId("claim-quality-verified").style.width = `${verifiedPercent}%`;
+  byId("claim-quality-rejected").style.width = `${rejectedPercent}%`;
+  byId("claim-quality-bar").setAttribute(
+    "aria-label",
+    `${verified} verified and ${rejected} rejected claims`,
+  );
   if (result) {
     const modes = result.modes || {};
     const searchMode = modes.search === "live" ? "Live search" : "Replay search";
@@ -210,15 +338,24 @@ function formatUsd(value) {
 function updateMeter(used, cap) {
   totalUsed = Math.max(0, Number(used) || 0);
   budgetCap = Math.max(1, Number(cap) || 1);
-  const percent = Math.min(100, totalUsed / budgetCap * 100);
+  const overBudget = totalUsed > budgetCap;
+  const percent = Math.max(0, Math.min(100, totalUsed / budgetCap * 100));
   byId("token-total").textContent = formatNumber(totalUsed);
   byId("budget-used").textContent = formatNumber(totalUsed);
   byId("budget-cap").textContent = formatNumber(budgetCap);
   byId("meter-fill").style.width = `${percent}%`;
   byId("meter-track").setAttribute("aria-valuemax", String(budgetCap));
-  byId("meter-track").setAttribute("aria-valuenow", String(totalUsed));
-  byId("meter-guidance").textContent = totalUsed >= budgetCap
-    ? "Token budget reached: new model calls stop."
+  byId("meter-track").setAttribute("aria-valuenow", String(Math.min(totalUsed, budgetCap)));
+  byId("meter-track").setAttribute(
+    "aria-valuetext",
+    overBudget ? `${formatNumber(totalUsed)} tokens used, over budget` : `${formatNumber(totalUsed)} of ${formatNumber(budgetCap)} tokens used`,
+  );
+  byId("meter-panel").classList.toggle("is-over-budget", overBudget);
+  byId("over-budget").hidden = !overBudget;
+  byId("meter-guidance").textContent = overBudget
+    ? "Usage is above the run cap."
+    : totalUsed >= budgetCap
+      ? "Token budget reached: new model calls stop."
     : METER_GUIDANCE;
 }
 
@@ -277,6 +414,7 @@ function addTimelineRow(key, { title, detail = "", icon = "·", status = "", tie
   model = "", tokens = "", duration = "—", className = "" }) {
   let row = timelineRows.get(key);
   if (!row) {
+    byId("timeline-empty")?.remove();
     const item = createElement("li", `timeline-item ${className}`.trim());
     const marker = createElement("span", `event-icon ${status}`, icon);
     marker.setAttribute("aria-hidden", "true");
@@ -333,6 +471,23 @@ function durationLabel(startedAt, finishedAt) {
 }
 
 function handleStep(data, timestamp) {
+  setWorkspaceLoading(false);
+  byId("workspace-empty").hidden = true;
+  const stepMap = mode === "brief"
+    ? { sources: "sources", extract: "extract", claims: "claims", synthesize: "synthesize" }
+    : { tests: "tests", patch: "patch", retest: "retest", regression: "retest" };
+  const stepId = stepMap[data.id];
+  if (stepId) updateStepperStep(stepId, data.status || "running");
+  if (mode === "fix") {
+    if (data.id === "tests" && data.status !== "running") {
+      updateStepperStep("locate", "running");
+    } else if (data.id === "patch" && data.status === "ok") {
+      updateStepperStep("retest", "running");
+    } else if ((data.id === "retest" || data.id === "regression") && data.status === "ok") {
+      fixRetestComplete = true;
+      updateStepperStep("approve", "running");
+    }
+  }
   const key = `step:${data.id || data.title}:${data.title || ""}`;
   const prior = timelineRows.get(key);
   const startedAt = prior?.startedAt || (data.status === "running" ? timestamp : null);
@@ -665,6 +820,7 @@ async function copyBriefMarkdown() {
     if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
     await navigator.clipboard.writeText(markdown);
     byId("copy-feedback").textContent = "Brief copied as Markdown.";
+    showToast("Brief copied as Markdown.");
   } catch {
     const textarea = createElement("textarea");
     textarea.value = markdown;
@@ -683,6 +839,10 @@ async function copyBriefMarkdown() {
     byId("copy-feedback").textContent = copied
       ? "Brief copied as Markdown."
       : "Clipboard access is unavailable in this browser.";
+    showToast(
+      copied ? "Brief copied as Markdown." : "Clipboard access is unavailable in this browser.",
+      copied ? "info" : "error",
+    );
   }
 }
 
@@ -758,6 +918,8 @@ function handleBlocked(data) {
 }
 
 function handleResult(result) {
+  setWorkspaceLoading(false);
+  byId("workspace-empty").hidden = true;
   const receipt = result.receipt;
   if (receipt) {
     updateMeter(receipt.tokens, receipt.cap);
@@ -830,6 +992,9 @@ function applyPreset(name) {
   document.querySelectorAll(".preset-button").forEach((button) => {
     button.classList.toggle("is-selected", button.dataset.preset === name);
   });
+  if (byId("workspace-grid").classList.contains("is-controls-collapsed")) {
+    setControlsCollapsed(false);
+  }
   byId("company").focus();
 }
 
@@ -915,6 +1080,9 @@ function parseEvent(event) {
   else if (type === "blocked") handleBlocked(data);
   else if (type === "result") handleResult(data);
   else if (type === "error") {
+    setWorkspaceLoading(false);
+    if (!briefResult) byId("workspace-empty").hidden = false;
+    showToast(data.message || "The run failed.", "error");
     closeApprovalDrawer();
     addTimelineRow(`run-error:${sequence}`, {
       title: "Run error",
@@ -1015,6 +1183,7 @@ function stopPolling() {
 
 function queueApproval(data) {
   if (!data || !data.hash) return;
+  if (mode === "fix" && fixRetestComplete) updateStepperStep("approve", "running");
   if (activeApproval?.data.hash === data.hash ||
       approvalQueue.some((item) => item.hash === data.hash)) return;
   approvalQueue.push(data);
@@ -1157,6 +1326,9 @@ function announceDecision(kind, decision) {
 }
 
 function handleApprovalResult(data) {
+  if (mode === "fix" && fixRetestComplete) {
+    updateStepperStep("approve", data.decision === "approved" ? "ok" : "fail");
+  }
   if (activeApproval?.data.hash === data.hash) {
     if (approvalTimer) clearInterval(approvalTimer);
     approvalTimer = null;
@@ -1188,6 +1360,7 @@ async function startRun(event) {
   resetRunView();
   const cap = Number(byId("token-budget").value);
   if (!Number.isInteger(cap) || cap < 100 || cap > 1000000) {
+    showToast("Choose a whole number between 100 and 1,000,000.", "error");
     addTimelineRow("form-error", {
       title: "Invalid token budget",
       detail: "Choose a whole number between 100 and 1,000,000.",
@@ -1215,6 +1388,7 @@ async function startRun(event) {
         confidential,
       };
   if (mode === "brief" && (!params.company || !params.meeting)) {
+    showToast("Enter a company or person and a meeting date and time.", "error");
     addTimelineRow("form-error", {
       title: "Missing brief details",
       detail: "Enter a company or person and a meeting date and time.",
@@ -1224,6 +1398,7 @@ async function startRun(event) {
     return;
   }
   if (mode === "fix" && !params.repo_path) {
+    showToast("Enter a GitHub link or an allowed local repository path.", "error");
     addTimelineRow("form-error", {
       title: "Missing repository",
       detail: "Enter a public GitHub link such as https://github.com/owner/repo, or a local path inside LEDGER_ALLOWED_ROOTS.",
@@ -1235,6 +1410,8 @@ async function startRun(event) {
   const userId = byId("user-id").value.trim() || "default";
   requestPending = true;
   byId("start-run").disabled = true;
+  byId("workspace-empty").hidden = true;
+  setWorkspaceLoading(true);
   setRunState("running");
   addTimelineRow("starting", {
     title: "Creating run",
@@ -1260,6 +1437,7 @@ async function startRun(event) {
     }
     runId = result.run_id;
     byId("run-id").textContent = `Run ${runId}`;
+    byId("activity-run-id").textContent = `Run ${runId}`;
     updateMeter(0, cap);
     byId("cancel-run").disabled = false;
     addTimelineRow("starting", {
@@ -1271,6 +1449,9 @@ async function startRun(event) {
     startStream(runId);
   } catch (error) {
     runId = null;
+    setWorkspaceLoading(false);
+    byId("workspace-empty").hidden = false;
+    showToast(error.message || "Request failed.", "error");
     setRunState("error");
     addTimelineRow("start-error", {
       title: "Could not start run",
@@ -1302,6 +1483,7 @@ async function cancelRun() {
     stopPolling();
   } catch (error) {
     byId("cancel-run").disabled = false;
+    showToast(error.message || "Could not cancel the run.", "error");
     addTimelineRow(`cancel-error:${Date.now()}`, {
       title: "Cancel failed",
       detail: error.message || "Could not cancel run.",
@@ -1406,6 +1588,7 @@ async function runRedteam() {
     renderRedteamResults(payload);
   } catch (error) {
     byId("redteam-status").textContent = error.message || "Red-team run failed.";
+    showToast(error.message || "Red-team run failed.", "error");
   } finally {
     button.disabled = false;
   }
@@ -1537,6 +1720,7 @@ async function loadBenchmarkSummary() {
   } catch (error) {
     byId("benchmark-error").textContent = error.message || "Could not load benchmark summary.";
     byId("benchmark-error").hidden = false;
+    showToast(error.message || "Could not load benchmark summary.", "error");
   } finally {
     button.disabled = false;
   }
@@ -1564,6 +1748,26 @@ document.querySelectorAll(".preset-button").forEach((button) => {
 });
 byId("brief-tab").addEventListener("click", () => setMode("brief"));
 byId("fix-tab").addEventListener("click", () => setMode("fix"));
+byId("collapse-controls").addEventListener("click", () => {
+  setControlsCollapsed(!byId("workspace-grid").classList.contains("is-controls-collapsed"));
+});
+byId("empty-focus-company").addEventListener("click", () => {
+  if (byId("workspace-grid").classList.contains("is-controls-collapsed")) {
+    setControlsCollapsed(false);
+  }
+  byId("company").focus();
+});
+byId("result-tab").addEventListener("click", () => setWorkspaceTab("result"));
+byId("activity-tab").addEventListener("click", () => setWorkspaceTab("activity"));
+for (const tab of [byId("result-tab"), byId("activity-tab")]) {
+  tab.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next = tab === byId("result-tab") ? byId("activity-tab") : byId("result-tab");
+    next.focus();
+    next.click();
+  });
+}
 byId("brief-sources").addEventListener("click", (event) => {
   const preview = event.target.closest("button.source-preview");
   if (!preview) return;
@@ -1624,6 +1828,8 @@ const now = new Date();
 now.setMinutes(now.getMinutes() + 60 - now.getMinutes() % 60, 0, 0);
 byId("meeting").value = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
   .toISOString().slice(0, 16);
+renderStepper();
+initializeWorkspaceLayout();
 updateMeter(0, DEFAULT_TOKEN_BUDGET);
 updateOutcomeStats();
 setRunState("idle");
