@@ -39,10 +39,14 @@ let approvalTimer = null;
 let previousFocus = null;
 let briefResult = null;
 let selectedBriefClaimIndex = -1;
+const fixStageMetrics = new Map();
+let activeFixStage = null;
+let currentFixDiffFiles = [];
+let currentFixDiffIndex = 0;
+let currentFixDiffMode = "unified";
 let requestPending = false;
 let toastTimer = null;
 let compactWorkspaceMedia = null;
-let fixRetestComplete = false;
 const timelineRows = new Map();
 const modelCalls = [];
 
@@ -89,18 +93,37 @@ function renderStepper() {
   const steps = mode === "brief" ? briefSteps : fixSteps;
   const list = byId("run-stepper");
   list.replaceChildren();
+  list.dataset.mode = mode;
+  fixStageMetrics.clear();
+  activeFixStage = null;
   list.setAttribute("aria-label", `${mode === "brief" ? "Brief" : "Fix"} progress`);
   for (const [index, [stepId, label]] of steps.entries()) {
     const item = createElement("li", "stepper-step");
     item.dataset.stepId = stepId;
     const marker = createElement("span", "stepper-marker", "");
     marker.dataset.stepNumber = String(index + 1);
+    const details = createElement("span", "stepper-details");
+    const duration = createElement("span", "stepper-duration", "—");
+    const tokens = createElement("span", "stepper-tokens", "0 tokens");
+    const tier = createElement("span", "stepper-tier tier-badge", "");
+    details.append(duration, tokens, tier);
+    if (mode === "fix") {
+      fixStageMetrics.set(stepId, {
+        status: "waiting",
+        startedAt: null,
+        elapsedMs: 0,
+        tokens: 0,
+        tier: stepId === "approve" ? "human" : "local",
+      });
+    }
     item.append(
       marker,
       createElement("span", "stepper-label", label),
       createElement("span", "stepper-status", "Waiting"),
+      details,
     );
     list.append(item);
+    updateFixStageMetrics(stepId);
   }
 }
 
@@ -108,22 +131,61 @@ function updateStepperStep(stepId, status) {
   const steps = [...byId("run-stepper").querySelectorAll(".stepper-step")];
   const index = steps.findIndex((step) => step.dataset.stepId === stepId);
   if (index < 0) return;
-  for (let prior = 0; prior < index; prior += 1) {
-    const item = steps[prior];
-    if (!item.classList.contains("is-failed")) {
-      item.classList.remove("is-active");
-      item.classList.add("is-complete");
-      item.querySelector(".stepper-status").textContent = "Done";
+  if (mode !== "fix") {
+    for (let prior = 0; prior < index; prior += 1) {
+      const item = steps[prior];
+      if (!item.classList.contains("is-failed")) {
+        item.classList.remove("is-active");
+        item.classList.add("is-complete");
+        item.querySelector(".stepper-status").textContent = "Done";
+      }
     }
   }
   const current = steps[index];
-  current.classList.remove("is-active", "is-complete", "is-failed");
-  current.classList.add(
-    status === "running" ? "is-active" : status === "ok" ? "is-complete" : "is-failed",
-  );
+  current.classList.remove("is-active", "is-complete", "is-failed", "is-skipped");
+  if (status === "running") current.classList.add("is-active");
+  else if (status === "ok") current.classList.add("is-complete");
+  else if (status === "skipped") current.classList.add("is-skipped");
+  else current.classList.add("is-failed");
   current.querySelector(".stepper-status").textContent =
-    status === "running" ? "In progress" : status === "ok" ? "Done" : "Needs attention";
+    status === "running" ? "In progress" : status === "ok" ? "Done" :
+      status === "skipped" ? "Not required" : "Needs attention";
   current.setAttribute("aria-current", status === "running" ? "step" : "false");
+}
+
+function updateFixStageMetrics(stepId) {
+  const metric = fixStageMetrics.get(stepId);
+  const item = [...byId("run-stepper").querySelectorAll(".stepper-step")]
+    .find((step) => step.dataset.stepId === stepId);
+  if (!metric || !item) return;
+  let elapsed = metric.elapsedMs;
+  if (metric.startedAt) {
+    elapsed += Math.max(0, Date.now() - new Date(metric.startedAt).getTime());
+  }
+  item.querySelector(".stepper-duration").textContent =
+    metric.startedAt || metric.elapsedMs ? durationFromMilliseconds(elapsed) : "—";
+  item.querySelector(".stepper-tokens").textContent = `${formatNumber(metric.tokens)} tokens`;
+  const tier = item.querySelector(".stepper-tier");
+  tier.className = `stepper-tier tier-badge tier-${metric.tier || "local"}`;
+  tier.textContent = metric.tier || "local";
+}
+
+function updateFixStage(stepId, status, timestamp) {
+  const metric = fixStageMetrics.get(stepId);
+  if (!metric) return;
+  const eventTime = timestamp || new Date().toISOString();
+  if (status === "running") {
+    if (metric.status !== "running") metric.startedAt = eventTime;
+  } else if (metric.startedAt) {
+    const elapsed = new Date(eventTime).getTime() - new Date(metric.startedAt).getTime();
+    if (Number.isFinite(elapsed)) metric.elapsedMs += Math.max(0, elapsed);
+    metric.startedAt = null;
+  }
+  metric.status = status;
+  if (stepId === "approve") metric.tier = "human";
+  activeFixStage = status === "running" ? stepId : null;
+  updateStepperStep(stepId, status);
+  updateFixStageMetrics(stepId);
 }
 
 function setWorkspaceTab(tabName) {
@@ -210,6 +272,16 @@ function resetRunView() {
   byId("brief-result").hidden = true;
   byId("brief-actions").hidden = true;
   byId("fix-result").hidden = true;
+  byId("fix-test-results").replaceChildren();
+  byId("fix-diff-viewer").hidden = true;
+  byId("fix-file-list").replaceChildren();
+  byId("fix-result-diff").replaceChildren();
+  byId("fix-diff-side-by-side").replaceChildren();
+  byId("fix-result-diff").hidden = true;
+  byId("fix-diff-side-by-side").hidden = true;
+  currentFixDiffFiles = [];
+  currentFixDiffIndex = 0;
+  currentFixDiffMode = "unified";
   byId("workspace-empty").hidden = false;
   setWorkspaceLoading(false);
   setWorkspaceTab("result");
@@ -471,27 +543,72 @@ function addTimelineRow(key, { title, detail = "", icon = "·", status = "", tie
 function durationLabel(startedAt, finishedAt) {
   if (!startedAt || !finishedAt) return "—";
   const ms = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime());
+  return durationFromMilliseconds(ms);
+}
+
+function durationFromMilliseconds(ms) {
   if (!Number.isFinite(ms)) return "—";
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+function updateFixTestChip(phase, status, detail = "") {
+  const results = byId("fix-test-results");
+  const existing = results.querySelector(`[data-test-phase="${phase}"]`);
+  const chip = createElement(
+    "span",
+    `test-chip ${status === "ok" ? "is-pass" : "is-fail"}`,
+    `${status === "ok" ? "Passing" : "Failing"} ${phase}`,
+  );
+  chip.title = detail || chip.textContent;
+  chip.setAttribute("aria-label", `${chip.textContent}${detail ? `: ${detail}` : ""}`);
+  const item = createElement("span", "test-chip-item");
+  item.setAttribute("role", "listitem");
+  item.dataset.testPhase = phase;
+  item.append(chip);
+  if (existing) existing.replaceWith(item);
+  else results.append(item);
 }
 
 function handleStep(data, timestamp) {
   setWorkspaceLoading(false);
   byId("workspace-empty").hidden = true;
-  const stepMap = mode === "brief"
-    ? { sources: "sources", extract: "extract", claims: "claims", synthesize: "synthesize" }
-    : { tests: "tests", patch: "patch", retest: "retest", regression: "retest" };
-  const stepId = stepMap[data.id];
-  if (stepId) updateStepperStep(stepId, data.status || "running");
   if (mode === "fix") {
-    if (data.id === "tests" && data.status !== "running") {
-      updateStepperStep("locate", "running");
-    } else if (data.id === "patch" && data.status === "ok") {
-      updateStepperStep("retest", "running");
-    } else if ((data.id === "retest" || data.id === "regression") && data.status === "ok") {
-      fixRetestComplete = true;
-      updateStepperStep("approve", "running");
+    const status = data.status || "running";
+    if (data.id === "tests") {
+      updateFixStage("tests", status, timestamp);
+      if (status !== "running") {
+        updateFixTestChip("before", status, data.detail);
+        if (status === "fail") updateFixStage("locate", "running", timestamp);
+        else {
+          for (const stage of ["locate", "patch", "retest"]) {
+            updateFixStage(stage, "skipped", timestamp);
+          }
+          if (!activeApproval && !approvalQueue.length) {
+            updateFixStage("approve", "skipped", timestamp);
+          }
+        }
+      }
+    } else if (data.id === "patch") {
+      const locate = fixStageMetrics.get("locate");
+      if (locate?.status === "running") updateFixStage("locate", "ok", timestamp);
+      updateFixStage("patch", status, timestamp);
+      if (status === "ok") updateFixStage("retest", "running", timestamp);
+    } else if (data.id === "retest" || data.id === "regression") {
+      if (status !== "running") {
+        updateFixTestChip(
+          data.id === "regression" ? "regression" : "after",
+          status,
+          data.detail,
+        );
+      }
+      updateFixStage("retest", status, timestamp);
+    } else if (data.id === "docs" || data.id === "budget") {
+      updateFixStage("locate", status, timestamp);
     }
+  } else {
+    const stepMap = { sources: "sources", extract: "extract", claims: "claims", synthesize: "synthesize" };
+    const stepId = stepMap[data.id];
+    if (stepId) updateStepperStep(stepId, data.status || "running");
   }
   const key = `step:${data.id || data.title}:${data.title || ""}`;
   const prior = timelineRows.get(key);
@@ -510,10 +627,30 @@ function handleStep(data, timestamp) {
   row.finishedAt = finishedAt;
 }
 
-function handleModelCall(data, sequence) {
+function fixStageForModelCall(data) {
+  const label = String(data.label || "").toLowerCase();
+  if (label.includes("triage")) return "locate";
+  if (label.startsWith("fix attempt")) return "patch";
+  return activeFixStage || "locate";
+}
+
+function handleModelCall(data, sequence, timestamp) {
   const tokensIn = Number(data.tokens_in) || 0;
   const tokensOut = Number(data.tokens_out) || 0;
   const tokens = tokensIn + tokensOut;
+  if (mode === "fix") {
+    const stage = fixStageForModelCall(data);
+    if (stage === "patch" && fixStageMetrics.get("locate")?.status === "running") {
+      updateFixStage("locate", "ok", timestamp);
+    }
+    const metric = fixStageMetrics.get(stage);
+    if (metric) {
+      if (metric.status !== "running") updateFixStage(stage, "running", timestamp);
+      metric.tokens += tokens;
+      metric.tier = data.tier || "local";
+      updateFixStageMetrics(stage);
+    }
+  }
   const key = `model:${sequence}`;
   addTimelineRow(key, {
     title: data.label || "Model call",
@@ -1072,6 +1209,7 @@ function handleResult(result) {
   if (result.mode === "brief") {
     renderBriefResult(result);
   } else {
+    finalizeFixPipeline(result, new Date().toISOString());
     closeEvidenceSheet();
     byId("brief-result").hidden = true;
     byId("brief-actions").hidden = true;
@@ -1136,11 +1274,164 @@ const fixStatusLabels = {
   partial: "Stopped before finishing",
 };
 
+function stripDiffPath(value) {
+  const path = String(value || "").trim().replace(/^["']|["']$/g, "");
+  return path.replace(/^[ab]\//, "") || "Changes";
+}
+
+function parseDiffRows(patch) {
+  const rows = [];
+  let oldNumber = null;
+  let newNumber = null;
+  for (const line of String(patch || "").split("\n")) {
+    if (line.startsWith("@@")) {
+      const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (hunk) {
+        oldNumber = Number(hunk[1]);
+        newNumber = Number(hunk[2]);
+      }
+      rows.push({ kind: "hunk", text: line });
+      continue;
+    }
+    if (oldNumber === null || line === "") continue;
+    if (line.startsWith("\\ ")) {
+      rows.push({ kind: "meta", text: line });
+    } else if (line.startsWith("+")) {
+      rows.push({ kind: "add", oldNumber: "", newNumber: newNumber++, text: line.slice(1) });
+    } else if (line.startsWith("-")) {
+      rows.push({ kind: "remove", oldNumber: oldNumber++, newNumber: "", text: line.slice(1) });
+    } else if (line.startsWith(" ")) {
+      rows.push({
+        kind: "context",
+        oldNumber: oldNumber++,
+        newNumber: newNumber++,
+        text: line.slice(1),
+      });
+    }
+  }
+  return rows;
+}
+
+function parseFixDiffFiles(diff) {
+  const source = String(diff || "");
+  const chunks = source.split(/(?=^diff --git )/m).filter((chunk) => chunk.trim());
+  return chunks.map((patch) => {
+    const newPath = patch.match(/^\+\+\+ (.+)$/m)?.[1];
+    const oldPath = patch.match(/^--- (.+)$/m)?.[1];
+    const path = stripDiffPath(newPath && newPath !== "/dev/null" ? newPath : oldPath);
+    return { path, rows: parseDiffRows(patch) };
+  });
+}
+
+function createUnifiedDiffLine(row) {
+  if (row.kind === "hunk" || row.kind === "meta") {
+    return createElement("span", `diff-view-meta diff-line-${row.kind}`, row.text);
+  }
+  const line = createElement("span", `diff-view-line diff-line-${row.kind}`);
+  line.append(
+    createElement("span", "diff-line-number", row.oldNumber ?? ""),
+    createElement("span", "diff-line-number", row.newNumber ?? ""),
+    createElement("span", "diff-line-content", `${row.kind === "add" ? "+" : row.kind === "remove" ? "-" : " "}${row.text}`),
+  );
+  return line;
+}
+
+function createSideDiffCell(row, side) {
+  if (!row || row.kind === "hunk" || row.kind === "meta") {
+    return createElement("span", "diff-side-cell diff-side-empty");
+  }
+  const lineNumber = side === "old" ? row.oldNumber : row.newNumber;
+  const text = `${row.kind === "add" && side === "new" ? "+" :
+    row.kind === "remove" && side === "old" ? "-" : " "}${row.text}`;
+  const cell = createElement("span", `diff-side-cell diff-line-${row.kind}`);
+  cell.append(
+    createElement("span", "diff-line-number", lineNumber ?? ""),
+    createElement("span", "diff-line-content", text),
+  );
+  return cell;
+}
+
+function renderUnifiedDiff(container, file) {
+  container.replaceChildren();
+  for (const row of file.rows) container.append(createUnifiedDiffLine(row));
+}
+
+function renderSideBySideDiff(container, file) {
+  container.replaceChildren();
+  const headings = createElement("div", "diff-side-headings");
+  headings.append(createElement("strong", "", "Before"), createElement("strong", "", "After"));
+  const rows = createElement("div", "diff-side-rows");
+  for (const row of file.rows) {
+    if (row.kind === "hunk" || row.kind === "meta") {
+      const heading = createElement("div", `diff-side-hunk diff-line-${row.kind}`, row.text);
+      rows.append(heading);
+      continue;
+    }
+    const pair = createElement("div", "diff-side-pair");
+    const oldRow = row.kind === "add" ? null : row;
+    const newRow = row.kind === "remove" ? null : row;
+    pair.append(createSideDiffCell(oldRow, "old"), createSideDiffCell(newRow, "new"));
+    rows.append(pair);
+  }
+  container.append(headings, rows);
+}
+
+function renderCurrentFixDiff() {
+  const file = currentFixDiffFiles[currentFixDiffIndex];
+  if (!file) return;
+  const unified = currentFixDiffMode === "unified";
+  byId("fix-result-diff").hidden = !unified;
+  byId("fix-diff-side-by-side").hidden = unified;
+  if (unified) renderUnifiedDiff(byId("fix-result-diff"), file);
+  else renderSideBySideDiff(byId("fix-diff-side-by-side"), file);
+}
+
+function selectFixDiffFile(index) {
+  if (!currentFixDiffFiles[index]) return;
+  currentFixDiffIndex = index;
+  for (const [fileIndex, button] of [...byId("fix-file-list").querySelectorAll("button")].entries()) {
+    button.classList.toggle("is-selected", fileIndex === index);
+    button.setAttribute("aria-current", fileIndex === index ? "true" : "false");
+  }
+  byId("fix-diff-active-file").textContent = currentFixDiffFiles[index].path;
+  renderCurrentFixDiff();
+}
+
+function renderFixDiff(diff) {
+  const viewer = byId("fix-diff-viewer");
+  const fileList = byId("fix-file-list");
+  fileList.replaceChildren();
+  currentFixDiffFiles = parseFixDiffFiles(diff);
+  currentFixDiffIndex = 0;
+  currentFixDiffMode = "unified";
+  byId("fix-view-unified").setAttribute("aria-pressed", "true");
+  byId("fix-view-side-by-side").setAttribute("aria-pressed", "false");
+  viewer.hidden = currentFixDiffFiles.length === 0;
+  for (const [index, file] of currentFixDiffFiles.entries()) {
+    const item = createElement("li");
+    const button = createElement("button", "fix-file-button", file.path);
+    button.type = "button";
+    button.dataset.fileIndex = String(index);
+    button.setAttribute("aria-current", index === 0 ? "true" : "false");
+    item.append(button);
+    fileList.append(item);
+  }
+  if (currentFixDiffFiles.length) selectFixDiffFile(0);
+}
+
+function setFixDiffMode(nextMode) {
+  currentFixDiffMode = nextMode;
+  const unified = nextMode === "unified";
+  byId("fix-view-unified").setAttribute("aria-pressed", String(unified));
+  byId("fix-view-side-by-side").setAttribute("aria-pressed", String(!unified));
+  renderCurrentFixDiff();
+}
+
 function renderFixResult(result) {
   const panel = byId("fix-result");
   const diff = typeof result.diff === "string" ? result.diff : "";
   const message = result.message || "";
-  if (!diff && !message && !result.diff_hash) {
+  if (!diff && !message && !result.diff_hash && !result.status) {
     panel.hidden = true;
     return;
   }
@@ -1148,10 +1439,7 @@ function renderFixResult(result) {
     fixStatusLabels[result.status] || String(result.status || "Finished");
   byId("fix-result-message").textContent = message;
   byId("fix-result-message").hidden = !message;
-  const pre = byId("fix-result-diff");
-  pre.replaceChildren();
-  pre.hidden = !diff;
-  if (diff) appendDiff(pre, diff);
+  renderFixDiff(diff);
   const hash = byId("fix-result-hash");
   if (!diff && result.diff_hash) {
     const symbols = Array.isArray(result.symbols) && result.symbols.length
@@ -1163,6 +1451,15 @@ function renderFixResult(result) {
     hash.hidden = true;
   }
   panel.hidden = false;
+}
+
+function finalizeFixPipeline(result, timestamp) {
+  for (const [stepId] of fixSteps) {
+    const metric = fixStageMetrics.get(stepId);
+    if (!metric || (metric.status !== "waiting" && metric.status !== "running")) continue;
+    const status = metric.status === "running" && result.status !== "green" ? "fail" : "skipped";
+    updateFixStage(stepId, status, timestamp);
+  }
 }
 
 function showMeasuredSavings(result, receipt) {
@@ -1201,15 +1498,15 @@ function parseEvent(event) {
   const data = envelope.data || {};
   const timestamp = envelope.ts || new Date().toISOString();
   if (type === "step") handleStep(data, timestamp);
-  else if (type === "model_call") handleModelCall(data, sequence || Date.now());
+  else if (type === "model_call") handleModelCall(data, sequence || Date.now(), timestamp);
   else if (type === "claim") handleClaim(data, sequence || Date.now());
   else if (type === "budget") {
     updateMeter(data.run_used ?? data.used, data.run_cap ?? data.cap);
     updateAccountBudget(data.used, data.cap);
   }
   else if (type === "failover") handleFailover(data);
-  else if (type === "approval_request") queueApproval(data);
-  else if (type === "approval_result") handleApprovalResult(data);
+  else if (type === "approval_request") queueApproval(data, timestamp);
+  else if (type === "approval_result") handleApprovalResult(data, timestamp);
   else if (type === "blocked") handleBlocked(data);
   else if (type === "result") handleResult(data);
   else if (type === "error") {
@@ -1314,11 +1611,11 @@ function stopPolling() {
   pollTimer = null;
 }
 
-function queueApproval(data) {
+function queueApproval(data, timestamp) {
   if (!data || !data.hash) return;
-  if (mode === "fix" && fixRetestComplete) updateStepperStep("approve", "running");
   if (activeApproval?.data.hash === data.hash ||
       approvalQueue.some((item) => item.hash === data.hash)) return;
+  if (mode === "fix") updateFixStage("approve", "running", timestamp);
   approvalQueue.push(data);
   if (!activeApproval) showNextApproval();
 }
@@ -1384,6 +1681,12 @@ function showNextApproval() {
   byId("approval-title").textContent = data.summary || "Approval required";
   byId("approval-description").textContent =
     "Review this exact action. Approval does not authorize any other action hash.";
+  const risk = String(data.risk || "Review required");
+  const riskLabel = byId("approval-risk");
+  riskLabel.textContent = risk;
+  riskLabel.className = "approval-risk-label";
+  const riskLevel = risk.toLowerCase().match(/\b(critical|high|medium|low)\b/)?.[1];
+  if (riskLevel) riskLabel.classList.add(`risk-${riskLevel}`);
   byId("approval-hash").textContent = String(data.hash).slice(0, 12);
   byId("approval-hash").title = data.hash;
   byId("approval-feedback").textContent = "";
@@ -1400,10 +1703,22 @@ function showNextApproval() {
 
 function updateCountdown() {
   if (!activeApproval) return;
+  const durationSeconds = 300;
   const seconds = Math.max(0, Math.ceil((activeApproval.deadline - Date.now()) / 1000));
   const minutes = Math.floor(seconds / 60);
   byId("approval-countdown").textContent =
     `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const circumference = 2 * Math.PI * 17;
+  const progress = byId("approval-countdown-progress");
+  progress.style.setProperty("stroke-dasharray", `${circumference}`);
+  progress.style.setProperty(
+    "stroke-dashoffset",
+    String(circumference * (1 - seconds / durationSeconds)),
+  );
+  byId("approval-countdown-ring").setAttribute(
+    "aria-label",
+    `${Math.ceil(seconds / 60)} minutes remaining`,
+  );
   if (seconds === 0 && !activeApproval.busy) submitApproval("denied", false, true);
 }
 
@@ -1458,9 +1773,9 @@ function announceDecision(kind, decision) {
   byId("timeline").append(row);
 }
 
-function handleApprovalResult(data) {
-  if (mode === "fix" && fixRetestComplete) {
-    updateStepperStep("approve", data.decision === "approved" ? "ok" : "fail");
+function handleApprovalResult(data, timestamp) {
+  if (mode === "fix") {
+    updateFixStage("approve", data.decision === "approved" ? "ok" : "fail", timestamp);
   }
   if (activeApproval?.data.hash === data.hash) {
     if (approvalTimer) clearInterval(approvalTimer);
@@ -1646,6 +1961,16 @@ function trapApprovalFocus(event) {
     event.preventDefault();
     first.focus();
   }
+}
+
+function handleApprovalShortcut(event) {
+  if (!activeApproval || event.altKey || event.ctrlKey || event.metaKey) return;
+  const key = event.key.toLowerCase();
+  if (!["a", "r", "d"].includes(key)) return;
+  const button = document.querySelector(`[data-approval-key="${key}"]`);
+  if (!button || button.disabled) return;
+  event.preventDefault();
+  button.click();
 }
 
 function renderRedteamEvidence(scenario) {
@@ -1881,6 +2206,12 @@ document.querySelectorAll(".preset-button").forEach((button) => {
 });
 byId("brief-tab").addEventListener("click", () => setMode("brief"));
 byId("fix-tab").addEventListener("click", () => setMode("fix"));
+byId("fix-file-list").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-file-index]");
+  if (button) selectFixDiffFile(Number(button.dataset.fileIndex));
+});
+byId("fix-view-unified").addEventListener("click", () => setFixDiffMode("unified"));
+byId("fix-view-side-by-side").addEventListener("click", () => setFixDiffMode("side-by-side"));
 byId("collapse-controls").addEventListener("click", () => {
   setControlsCollapsed(!byId("workspace-grid").classList.contains("is-controls-collapsed"));
 });
@@ -1968,6 +2299,7 @@ byId("deny-approval").addEventListener("click", () => submitApproval("denied", f
 byId("approve-once").addEventListener("click", () => submitApproval("approved", true));
 byId("approve-run").addEventListener("click", () => submitApproval("approved", false));
 byId("approval-drawer").addEventListener("keydown", trapApprovalFocus);
+document.addEventListener("keydown", handleApprovalShortcut);
 document.addEventListener("focusin", (event) => {
   if (activeApproval && !byId("approval-drawer").contains(event.target)) {
     byId("deny-approval").focus();

@@ -252,7 +252,24 @@
               <h3 id="fix-result-heading">Fix result</h3>
               <p class="fix-result-status" id="fix-result-status"></p>
               <p class="fix-result-message" id="fix-result-message"></p>
-              <pre class="fix-result-diff" id="fix-result-diff" tabindex="0" hidden></pre>
+              <div class="fix-test-results" id="fix-test-results" role="list" aria-label="Test results"></div>
+              <section class="fix-diff-viewer" id="fix-diff-viewer" aria-label="Patch diff" hidden>
+                <aside class="fix-diff-files">
+                  <h4>Changed files</h4>
+                  <ul id="fix-file-list"></ul>
+                </aside>
+                <div class="fix-diff-main">
+                  <div class="fix-diff-toolbar">
+                    <strong id="fix-diff-active-file">Diff</strong>
+                    <div class="diff-view-toggle" role="group" aria-label="Diff layout">
+                      <button id="fix-view-unified" type="button" aria-pressed="true">Unified</button>
+                      <button id="fix-view-side-by-side" type="button" aria-pressed="false">Side by side</button>
+                    </div>
+                  </div>
+                  <pre class="fix-result-diff" id="fix-result-diff" tabindex="0"></pre>
+                  <div class="diff-side-by-side" id="fix-diff-side-by-side" hidden></div>
+                </div>
+              </section>
               <p class="fix-result-hash" id="fix-result-hash" hidden></p>
             </section>
           </div>
@@ -368,17 +385,33 @@
       aria-labelledby="approval-title" aria-describedby="approval-description" tabindex="-1">
       <div class="drawer-topline">
         <span class="kind-chip" id="approval-kind">Approval</span>
-        <span class="approval-countdown" id="approval-countdown">05:00</span>
+        <div class="approval-countdown-wrap" aria-label="Approval time remaining">
+          <svg class="approval-countdown-ring" id="approval-countdown-ring" viewBox="0 0 42 42"
+            role="img" aria-label="Five minutes remaining">
+            <circle class="countdown-ring-track" cx="21" cy="21" r="17"></circle>
+            <circle class="countdown-ring-progress" id="approval-countdown-progress" cx="21" cy="21" r="17"></circle>
+          </svg>
+          <span class="approval-countdown" id="approval-countdown">05:00</span>
+        </div>
       </div>
       <h2 id="approval-title">Approval required</h2>
       <p id="approval-description"></p>
+      <p class="approval-risk-row">Risk <strong class="approval-risk-label" id="approval-risk">Review required</strong></p>
       <p class="action-hash">Action hash <code id="approval-hash"></code></p>
       <div class="approval-detail" id="approval-detail"></div>
       <p class="approval-warning">This request expires in five minutes. Escape does not approve it.</p>
+      <p class="approval-shortcuts" id="approval-shortcuts">
+        Shortcuts <kbd class="shortcut-hint">A</kbd> Approve once
+        <kbd class="shortcut-hint">R</kbd> Approve for run
+        <kbd class="shortcut-hint">D</kbd> Deny
+      </p>
       <div class="approval-actions">
-        <button class="danger-button" id="deny-approval" type="button">Deny</button>
-        <button class="secondary-button" id="approve-run" type="button">Approve for this run</button>
-        <button class="primary-button" id="approve-once" type="button">Approve once</button>
+        <button class="danger-button" id="deny-approval" data-approval-key="d"
+          aria-label="Deny" type="button">Deny <kbd class="shortcut-hint">D</kbd></button>
+        <button class="secondary-button" id="approve-run" data-approval-key="r"
+          aria-label="Approve for this run" type="button">Approve for this run <kbd class="shortcut-hint">R</kbd></button>
+        <button class="primary-button" id="approve-once" data-approval-key="a"
+          aria-label="Approve once" type="button">Approve once <kbd class="shortcut-hint">A</kbd></button>
       </div>
       <p class="approval-feedback" id="approval-feedback" role="status" aria-live="polite"></p>
     </section>
