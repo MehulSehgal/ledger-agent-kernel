@@ -105,7 +105,7 @@
           <label for="token-budget">Token budget</label>
           <div class="budget-input">
             <input id="token-budget" name="cap" type="number" min="100" max="1000000"
-              step="100" value="12000" required>
+              step="100" value="100" required>
             <span>tokens</span>
           </div>
         </div>
@@ -185,14 +185,14 @@
         <span>tokens used</span>
       </div>
       <div class="meter-track" id="meter-track" role="meter" aria-label="Token budget used"
-        aria-valuemin="0" aria-valuemax="12000" aria-valuenow="0">
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <span class="meter-fill" id="meter-fill"></span>
         <span class="meter-marker marker-80" aria-hidden="true"><i></i><b>80%</b></span>
         <span class="meter-marker marker-100" aria-hidden="true"><i></i><b>100%</b></span>
       </div>
       <div class="meter-labels">
         <span><span id="budget-used">0</span> used</span>
-        <span><span id="budget-cap">12,000</span> cap</span>
+        <span><span id="budget-cap">100</span> cap</span>
       </div>
       <p class="meter-guidance">80%: strong calls may degrade. 100%: calls stop.</p>
       <div class="receipt-stat">

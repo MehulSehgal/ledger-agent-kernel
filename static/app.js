@@ -1,6 +1,7 @@
 const byId = (id) => document.getElementById(id);
 const API_BASE = String(globalThis.LEDGER_API_URL || "").replace(/\/+$/, "");
 const apiUrl = (path) => `${API_BASE}${path}`;
+const DEFAULT_TOKEN_BUDGET = 100;
 const terminalStates = new Set(["done", "error", "cancelled"]);
 const eventNames = [
   "step", "model_call", "claim", "budget", "failover", "approval_request",
@@ -22,7 +23,7 @@ let fallbackTimer = null;
 let pollTimer = null;
 let lastSequence = 0;
 let totalUsed = 0;
-let budgetCap = 12000;
+let budgetCap = DEFAULT_TOKEN_BUDGET;
 let usdTotal = 0;
 let priceUnverified = false;
 let blockedCount = 0;
@@ -58,7 +59,7 @@ function setMode(nextMode) {
   byId("brief-fields").hidden = !briefSelected;
   byId("fix-fields").hidden = briefSelected;
   byId("start-run").textContent = briefSelected ? "Start brief" : "Start fix";
-  byId("token-budget").value = briefSelected ? "12000" : "6000";
+  byId("token-budget").value = String(DEFAULT_TOKEN_BUDGET);
 }
 
 function createElement(tag, className, text) {
@@ -1466,7 +1467,7 @@ const now = new Date();
 now.setMinutes(now.getMinutes() + 60 - now.getMinutes() % 60, 0, 0);
 byId("meeting").value = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
   .toISOString().slice(0, 16);
-updateMeter(0, 12000);
+updateMeter(0, DEFAULT_TOKEN_BUDGET);
 updateOutcomeStats();
 setRunState("idle");
 fetch(apiUrl("/api/status"))
