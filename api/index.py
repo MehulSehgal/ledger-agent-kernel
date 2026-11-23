@@ -1,4 +1,3 @@
-"""Vercel entrypoint for the Ledger FastAPI application."""
 import sys
 from pathlib import Path
 
